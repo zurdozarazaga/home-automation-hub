@@ -1,0 +1,1 @@
+export const ACTION_LOG_REPOSITORY = Symbol('ACTION_LOG_REPOSITORY');
