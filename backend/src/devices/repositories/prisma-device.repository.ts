@@ -1,67 +1,206 @@
-import { Injectable, NotImplementedException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+} from '@nestjs/common';
+import { PrismaService } from '../../database/prisma.service';
 import { DeviceRepository } from '../interfaces/device-repository.interface';
 import {
   CreateDeviceInput,
   Device,
+  DeviceStatus,
   UpdateDeviceInput,
 } from '../interfaces/device.interface';
 
 @Injectable()
 export class PrismaDeviceRepository implements DeviceRepository {
-  findAll(): Promise<Device[]> {
-    // TODO(prisma): Replace with prisma.device.findMany().
-    throw new NotImplementedException(
-      'PrismaDeviceRepository is not implemented yet. Use DATA_SOURCE=in-memory.',
-    );
+  private readonly logger = new Logger(PrismaDeviceRepository.name);
+
+  constructor(private readonly prisma: PrismaService) {}
+
+  async findAll(): Promise<Device[]> {
+    try {
+      const devices = await this.prisma.device.findMany({
+        orderBy: { createdAt: 'desc' },
+      });
+
+      return devices.map((device) => this.mapDevice(device));
+    } catch (error) {
+      this.logger.error('Failed to fetch devices', error);
+      throw new InternalServerErrorException('Failed to fetch devices');
+    }
   }
 
-  findById(id: string): Promise<Device | null> {
-    void id;
-    // TODO(prisma): Replace with prisma.device.findUnique({ where: { id } }).
-    throw new NotImplementedException(
-      'PrismaDeviceRepository is not implemented yet. Use DATA_SOURCE=in-memory.',
-    );
+  async findById(id: string): Promise<Device | null> {
+    try {
+      const device = await this.prisma.device.findUnique({
+        where: { id },
+      });
+
+      return device ? this.mapDevice(device) : null;
+    } catch (error) {
+      this.logger.error(`Failed to fetch device by id: ${id}`, error);
+      throw new InternalServerErrorException('Failed to fetch device by id');
+    }
   }
 
-  findByName(name: string): Promise<Device | null> {
-    void name;
-    // TODO(prisma): Replace with prisma.device.findUnique({ where: { name } }).
-    throw new NotImplementedException(
-      'PrismaDeviceRepository is not implemented yet. Use DATA_SOURCE=in-memory.',
-    );
+  async findByName(name: string): Promise<Device | null> {
+    try {
+      const device = await this.prisma.device.findUnique({
+        where: { name },
+      });
+
+      return device ? this.mapDevice(device) : null;
+    } catch (error) {
+      this.logger.error(`Failed to fetch device by name: ${name}`, error);
+      throw new InternalServerErrorException('Failed to fetch device by name');
+    }
   }
 
-  findByNetwork(ipAddress: string, port: number): Promise<Device | null> {
-    void ipAddress;
-    void port;
-    // TODO(prisma): Replace with prisma.device.findFirst({ where: { ipAddress, port } }).
-    throw new NotImplementedException(
-      'PrismaDeviceRepository is not implemented yet. Use DATA_SOURCE=in-memory.',
-    );
+  async findByNetwork(ipAddress: string, port: number): Promise<Device | null> {
+    try {
+      const device = await this.prisma.device.findUnique({
+        where: {
+          ipAddress_port: {
+            ipAddress,
+            port,
+          },
+        },
+      });
+
+      return device ? this.mapDevice(device) : null;
+    } catch (error) {
+      this.logger.error(
+        `Failed to fetch device by network: ${ipAddress}:${port}`,
+        error,
+      );
+      throw new InternalServerErrorException(
+        'Failed to fetch device by network',
+      );
+    }
   }
 
-  create(input: CreateDeviceInput): Promise<Device> {
-    void input;
-    // TODO(prisma): Replace with prisma.device.create().
-    throw new NotImplementedException(
-      'PrismaDeviceRepository is not implemented yet. Use DATA_SOURCE=in-memory.',
-    );
+  async create(input: CreateDeviceInput): Promise<Device> {
+    try {
+      const created = await this.prisma.device.create({
+        data: {
+          name: input.name,
+          description: input.description,
+          ipAddress: input.ipAddress,
+          port: input.port,
+          status: 'offline',
+        },
+      });
+
+      return this.mapDevice(created);
+    } catch (error) {
+      if (this.isUniqueConstraintError(error)) {
+        throw new ConflictException(
+          'A device with the same name or network address already exists',
+        );
+      }
+
+      this.logger.error(
+        `Failed to create device: ${input.name} (${input.ipAddress}:${input.port})`,
+        error,
+      );
+      throw new InternalServerErrorException('Failed to create device');
+    }
   }
 
-  update(id: string, input: UpdateDeviceInput): Promise<Device | null> {
-    void id;
-    void input;
-    // TODO(prisma): Replace with prisma.device.update().
-    throw new NotImplementedException(
-      'PrismaDeviceRepository is not implemented yet. Use DATA_SOURCE=in-memory.',
-    );
+  async update(id: string, input: UpdateDeviceInput): Promise<Device | null> {
+    try {
+      const updated = await this.prisma.device.update({
+        where: { id },
+        data: input,
+      });
+
+      return this.mapDevice(updated);
+    } catch (error) {
+      if (this.isRecordNotFoundError(error)) {
+        return null;
+      }
+
+      if (this.isUniqueConstraintError(error)) {
+        throw new ConflictException(
+          'A device with the same name or network address already exists',
+        );
+      }
+
+      this.logger.error(`Failed to update device: ${id}`, error);
+      throw new InternalServerErrorException('Failed to update device');
+    }
   }
 
-  delete(id: string): Promise<boolean> {
-    void id;
-    // TODO(prisma): Replace with prisma.device.delete().
-    throw new NotImplementedException(
-      'PrismaDeviceRepository is not implemented yet. Use DATA_SOURCE=in-memory.',
-    );
+  async delete(id: string): Promise<boolean> {
+    try {
+      await this.prisma.device.delete({
+        where: { id },
+      });
+
+      return true;
+    } catch (error) {
+      if (this.isRecordNotFoundError(error)) {
+        return false;
+      }
+
+      this.logger.error(`Failed to delete device: ${id}`, error);
+      throw new InternalServerErrorException('Failed to delete device');
+    }
+  }
+
+  private isUniqueConstraintError(error: unknown): boolean {
+    return this.getPrismaErrorCode(error) === 'P2002';
+  }
+
+  private isRecordNotFoundError(error: unknown): boolean {
+    return this.getPrismaErrorCode(error) === 'P2025';
+  }
+
+  private getPrismaErrorCode(error: unknown): string | null {
+    if (typeof error !== 'object' || error === null || !('code' in error)) {
+      return null;
+    }
+
+    const code = (error as { code?: unknown }).code;
+    if (typeof code !== 'string') {
+      return null;
+    }
+
+    return code;
+  }
+
+  private mapDevice(device: {
+    id: string;
+    name: string;
+    description: string;
+    ipAddress: string;
+    port: number;
+    status: string;
+    createdAt: Date;
+    updatedAt: Date;
+  }): Device {
+    const status = this.parseDeviceStatus(device.status);
+
+    return {
+      id: device.id,
+      name: device.name,
+      description: device.description,
+      ipAddress: device.ipAddress,
+      port: device.port,
+      status,
+      createdAt: device.createdAt,
+      updatedAt: device.updatedAt,
+    };
+  }
+
+  private parseDeviceStatus(status: string): DeviceStatus {
+    if (status === 'online' || status === 'offline') {
+      return status;
+    }
+
+    this.logger.error(`Invalid device status found in database: ${status}`);
+    throw new InternalServerErrorException('Invalid device status in database');
   }
 }

@@ -7,8 +7,8 @@ import {
 import { DEVICE_REPOSITORY } from './constants/device-repository.token';
 import { CreateDeviceDto } from './dto/create-device.dto';
 import { UpdateDeviceDto } from './dto/update-device.dto';
-import { DeviceRepository } from './interfaces/device-repository.interface';
-import { Device } from './interfaces/device.interface';
+import type { DeviceRepository } from './interfaces/device-repository.interface';
+import type { Device } from './interfaces/device.interface';
 
 @Injectable()
 export class DevicesService {

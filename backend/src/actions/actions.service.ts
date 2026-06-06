@@ -3,13 +3,13 @@ import { DevicesService } from '../devices/devices.service';
 import { ACTION_LOG_REPOSITORY } from './constants/action-log-repository.token';
 import { ESP32_CLIENT } from './constants/esp32-client.token';
 import { ExecuteActionDto } from './dto/execute-action.dto';
-import { ActionLogRepository } from './interfaces/action-log-repository.interface';
-import {
+import type { ActionLogRepository } from './interfaces/action-log-repository.interface';
+import type {
   ActionCommand,
   ActionExecutionResult,
   ActionResultStatus,
 } from './interfaces/action.interface';
-import {
+import type {
   Esp32Client,
   Esp32CommandResponse,
 } from './interfaces/esp32-client.interface';
