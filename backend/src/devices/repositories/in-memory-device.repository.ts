@@ -64,9 +64,13 @@ export class InMemoryDeviceRepository implements DeviceRepository {
       return Promise.resolve(null);
     }
 
+    const sanitizedInput = Object.fromEntries(
+      Object.entries(input).filter(([, value]) => value !== undefined),
+    ) as UpdateDeviceInput;
+
     const updatedDevice: Device = {
       ...existingDevice,
-      ...input,
+      ...sanitizedInput,
       updatedAt: new Date(),
     };
 

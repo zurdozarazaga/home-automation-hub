@@ -6,6 +6,7 @@ import { AppService } from './app.service';
 import { DatabaseModule } from './database/database.module';
 import { DevicesModule } from './devices/devices.module';
 import { HealthModule } from './health/health.module';
+import { N8nModule } from './integrations/n8n/n8n.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { HealthModule } from './health/health.module';
     ActionsModule,
     HealthModule,
     AuthModule,
+    N8nModule,
   ],
   controllers: [AppController],
   providers: [AppService],
