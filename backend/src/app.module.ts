@@ -7,6 +7,7 @@ import { DatabaseModule } from './database/database.module';
 import { DevicesModule } from './devices/devices.module';
 import { HealthModule } from './health/health.module';
 import { N8nModule } from './integrations/n8n/n8n.module';
+import { TelemetryModule } from './telemetry/telemetry.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { N8nModule } from './integrations/n8n/n8n.module';
     HealthModule,
     AuthModule,
     N8nModule,
+    TelemetryModule,
   ],
   controllers: [AppController],
   providers: [AppService],
