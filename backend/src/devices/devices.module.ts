@@ -1,9 +1,6 @@
 import { Module } from '@nestjs/common';
 import { DEVICE_REPOSITORY } from './constants/device-repository.token';
-import {
-  DEVICE_DRIVER,
-  DRIVER_REGISTRY,
-} from './constants/driver.tokens';
+import { DEVICE_DRIVER, DRIVER_REGISTRY } from './constants/driver.tokens';
 import { DevicesController } from './devices.controller';
 import { DevicesService } from './devices.service';
 import { DeviceDriver } from './drivers/device-driver.interface';

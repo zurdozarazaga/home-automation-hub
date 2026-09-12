@@ -29,9 +29,7 @@ export class DriverResolverService {
       this.logger.warn(
         `Rejected action for unknown driver '${driverName}' at ${new Date().toISOString()}: no device contacted`,
       );
-      throw new BadRequestException(
-        `Unknown device driver '${driverName}'`,
-      );
+      throw new BadRequestException(`Unknown device driver '${driverName}'`);
     }
 
     return driver;

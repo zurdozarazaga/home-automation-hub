@@ -24,12 +24,9 @@ describe('Esp32Driver', () => {
     ['turn_off', 'riego', '/riego/off'],
     ['turn_on', 'luces', '/luces/on'],
     ['turn_off', 'luces', '/luces/off'],
-  ] as const)(
-    'resolves %s %s to %s',
-    (action, target, expected) => {
-      expect(driver.resolveEndpoint(action, target)).toBe(expected);
-    },
-  );
+  ] as const)('resolves %s %s to %s', (action, target, expected) => {
+    expect(driver.resolveEndpoint(action, target)).toBe(expected);
+  });
 
   it('fails closed on unknown targets', () => {
     expect(() => driver.resolveEndpoint('turn_on', 'cortina')).toThrow(

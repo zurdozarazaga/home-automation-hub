@@ -15,8 +15,5 @@ export interface TransportSendResult {
  * TODO(mqtt): add publish-only MqttTransport behind MQTT_ENABLED switch.
  */
 export interface DeviceTransport {
-  send(
-    device: Device,
-    command: ActionCommand,
-  ): Promise<TransportSendResult>;
+  send(device: Device, command: ActionCommand): Promise<TransportSendResult>;
 }

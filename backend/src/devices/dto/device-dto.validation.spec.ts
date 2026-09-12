@@ -4,12 +4,16 @@ import { UpdateDeviceDto } from './update-device.dto';
 
 function createDto(overrides: Partial<CreateDeviceDto>): CreateDeviceDto {
   const dto = new CreateDeviceDto();
-  Object.assign(dto, {
-    name: 'Riego Patio',
-    description: 'Controla riego del patio',
-    ipAddress: '192.168.1.10',
-    port: 80,
-  } satisfies Partial<CreateDeviceDto>, overrides);
+  Object.assign(
+    dto,
+    {
+      name: 'Riego Patio',
+      description: 'Controla riego del patio',
+      ipAddress: '192.168.1.10',
+      port: 80,
+    } satisfies Partial<CreateDeviceDto>,
+    overrides,
+  );
   return dto;
 }
 
