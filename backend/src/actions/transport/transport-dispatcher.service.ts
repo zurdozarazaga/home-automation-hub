@@ -1,8 +1,4 @@
-import {
-  BadRequestException,
-  Inject,
-  Injectable,
-} from '@nestjs/common';
+import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { DEVICE_DRIVER } from '../../devices/constants/driver.tokens';
 import type { DriverResolverService } from '../../devices/drivers/driver-resolver.service';
 import type { Device } from '../../devices/interfaces/device.interface';

@@ -21,15 +21,12 @@ export class InMemoryTransportService implements DeviceTransport {
     private readonly driverResolver: DriverResolverService,
   ) {}
 
-  async send(
-    device: Device,
-    command: ActionCommand,
-  ): Promise<TransportSendResult> {
+  send(device: Device, command: ActionCommand): Promise<TransportSendResult> {
     const driver = this.driverResolver.resolve(device.driver);
 
-    return {
+    return Promise.resolve({
       endpoint: driver.resolveEndpoint(command.action, command.target),
       httpStatusCode: 200,
-    };
+    });
   }
 }

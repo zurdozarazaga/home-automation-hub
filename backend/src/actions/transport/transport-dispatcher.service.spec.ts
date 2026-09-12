@@ -115,8 +115,8 @@ describe('TransportDispatcherService', () => {
     });
 
     expect(result).toEqual({ endpoint: '/riego/on', httpStatusCode: 200 });
-    expect(inMemoryTransport.send).toHaveBeenCalledTimes(1);
-    expect(httpTransport.send).not.toHaveBeenCalled();
+    expect(inMemoryTransport.send.mock.calls).toHaveLength(1);
+    expect(httpTransport.send.mock.calls).toHaveLength(0);
   });
 
   it('routes http drivers to the HTTP transport in prisma mode', async () => {
@@ -135,8 +135,8 @@ describe('TransportDispatcherService', () => {
     });
 
     expect(result).toEqual({ endpoint: '/riego/on', httpStatusCode: 200 });
-    expect(httpTransport.send).toHaveBeenCalledTimes(1);
-    expect(inMemoryTransport.send).not.toHaveBeenCalled();
+    expect(httpTransport.send.mock.calls).toHaveLength(1);
+    expect(inMemoryTransport.send.mock.calls).toHaveLength(0);
   });
 
   it('publishes once through the MQTT stub without subscribing', async () => {
@@ -160,8 +160,8 @@ describe('TransportDispatcherService', () => {
       httpStatusCode: 202,
     });
     expect('subscribe' in mqttTransport).toBe(false);
-    expect(httpTransport.send).not.toHaveBeenCalled();
-    expect(inMemoryTransport.send).not.toHaveBeenCalled();
+    expect(httpTransport.send.mock.calls).toHaveLength(0);
+    expect(inMemoryTransport.send.mock.calls).toHaveLength(0);
   });
 
   it('rejects mqtt drivers with 400 while MQTT is disabled', async () => {
@@ -175,8 +175,8 @@ describe('TransportDispatcherService', () => {
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
 
-    expect(httpTransport.send).not.toHaveBeenCalled();
-    expect(inMemoryTransport.send).not.toHaveBeenCalled();
+    expect(httpTransport.send.mock.calls).toHaveLength(0);
+    expect(inMemoryTransport.send.mock.calls).toHaveLength(0);
   });
 
   it('rejects mqtt devices without a topic', async () => {
@@ -204,8 +204,8 @@ describe('TransportDispatcherService', () => {
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
 
-    expect(httpTransport.send).not.toHaveBeenCalled();
+    expect(httpTransport.send.mock.calls).toHaveLength(0);
     expect(publishSpy).not.toHaveBeenCalled();
-    expect(inMemoryTransport.send).not.toHaveBeenCalled();
+    expect(inMemoryTransport.send.mock.calls).toHaveLength(0);
   });
 });

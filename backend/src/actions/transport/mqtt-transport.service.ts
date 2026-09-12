@@ -23,10 +23,7 @@ export class MqttTransportService implements DeviceTransport {
     this.logger.log(`MQTT publish to '${topic}': ${payload}`);
   }
 
-  async send(
-    device: Device,
-    command: ActionCommand,
-  ): Promise<TransportSendResult> {
+  send(device: Device, command: ActionCommand): Promise<TransportSendResult> {
     if (!device.mqttTopic) {
       throw new BadRequestException(
         `Device ${device.id} has no mqttTopic configured`,
@@ -38,9 +35,9 @@ export class MqttTransportService implements DeviceTransport {
       JSON.stringify({ action: command.action, target: command.target }),
     );
 
-    return {
+    return Promise.resolve({
       endpoint: device.mqttTopic,
       httpStatusCode: 202,
-    };
+    });
   }
 }
