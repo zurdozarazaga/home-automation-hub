@@ -94,12 +94,12 @@ export class PrismaActionLogRepository implements ActionLogRepository {
   }
 
   private parseTarget(target: string): DeviceTarget {
-    if (target === 'riego' || target === 'luces') {
-      return target;
+    if (target.length === 0) {
+      this.logger.error('Empty target found in database');
+      throw new InternalServerErrorException('Invalid target in database');
     }
 
-    this.logger.error(`Invalid target found in database: ${target}`);
-    throw new InternalServerErrorException('Invalid target in database');
+    return target;
   }
 
   private parseResult(result: string): ActionResultStatus {
