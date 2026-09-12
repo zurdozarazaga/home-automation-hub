@@ -1,5 +1,5 @@
 import { Device } from '../../devices/interfaces/device.interface';
-import { ActionCommand } from './action.interface';
+import { ActionCommand } from '../interfaces/action.interface';
 
 export interface TransportSendResult {
   endpoint: string;
