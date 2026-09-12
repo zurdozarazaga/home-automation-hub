@@ -32,14 +32,23 @@ export class DevicesService {
 
   async create(createDeviceDto: CreateDeviceDto): Promise<Device> {
     await this.ensureUniqueName(createDeviceDto.name);
-    await this.ensureUniqueNetwork(
-      createDeviceDto.ipAddress,
-      createDeviceDto.port,
-    );
+
+    if (
+      createDeviceDto.ipAddress !== undefined &&
+      createDeviceDto.port !== undefined
+    ) {
+      await this.ensureUniqueNetwork(
+        createDeviceDto.ipAddress,
+        createDeviceDto.port,
+      );
+    }
 
     return this.deviceRepository.create({
       name: createDeviceDto.name,
       description: createDeviceDto.description,
+      driver: createDeviceDto.driver,
+      capabilities: createDeviceDto.capabilities,
+      mqttTopic: createDeviceDto.mqttTopic,
       ipAddress: createDeviceDto.ipAddress,
       port: createDeviceDto.port,
     });
@@ -58,7 +67,7 @@ export class DevicesService {
       nextIpAddress !== existingDevice.ipAddress ||
       nextPort !== existingDevice.port;
 
-    if (networkChanged) {
+    if (networkChanged && nextIpAddress != null && nextPort != null) {
       await this.ensureUniqueNetwork(nextIpAddress, nextPort, id);
     }
 
