@@ -9,10 +9,9 @@ export interface TransportSendResult {
 /**
  * Single dispatch contract for device command delivery.
  *
- * HTTP keeps current behavior; MQTT arrives as a publish-only stub.
- * Services depend on this token, never on a concrete client.
- *
- * TODO(mqtt): add publish-only MqttTransport behind MQTT_ENABLED switch.
+ * HTTP keeps current behavior; MQTT arrives as a publish-only stub behind
+ * the `MQTT_ENABLED` switch. Services depend on this token, never on a
+ * concrete client.
  */
 export interface DeviceTransport {
   send(device: Device, command: ActionCommand): Promise<TransportSendResult>;

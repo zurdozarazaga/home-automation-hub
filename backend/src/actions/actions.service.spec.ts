@@ -1,6 +1,7 @@
 import {
   BadGatewayException,
   BadRequestException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
@@ -11,9 +12,9 @@ import { Esp32Driver } from '../devices/drivers/esp32.driver';
 import { Device } from '../devices/interfaces/device.interface';
 import { ActionsService } from './actions.service';
 import { ACTION_LOG_REPOSITORY } from './constants/action-log-repository.token';
-import { ESP32_CLIENT } from './constants/esp32-client.token';
+import { DEVICE_TRANSPORT } from './constants/device-transport.token';
 import { ActionLogRepository } from './interfaces/action-log-repository.interface';
-import { Esp32Client } from './interfaces/esp32-client.interface';
+import { DeviceTransport } from './transport/device-transport.interface';
 
 function buildDevice(overrides: Partial<Device> = {}): Device {
   return {
@@ -36,7 +37,7 @@ describe('ActionsService', () => {
   let actionsService: ActionsService;
   let devicesService: jest.Mocked<DevicesService>;
   let driverResolver: jest.Mocked<DriverResolverService>;
-  let esp32Client: jest.Mocked<Esp32Client>;
+  let transport: jest.Mocked<DeviceTransport>;
   let actionLogRepository: jest.Mocked<ActionLogRepository>;
 
   beforeEach(async () => {
@@ -56,9 +57,9 @@ describe('ActionsService', () => {
           },
         },
         {
-          provide: ESP32_CLIENT,
+          provide: DEVICE_TRANSPORT,
           useValue: {
-            sendAction: jest.fn(),
+            send: jest.fn(),
           },
         },
         {
@@ -74,7 +75,7 @@ describe('ActionsService', () => {
     actionsService = module.get<ActionsService>(ActionsService);
     devicesService = module.get(DevicesService);
     driverResolver = module.get(DEVICE_DRIVER);
-    esp32Client = module.get(ESP32_CLIENT);
+    transport = module.get(DEVICE_TRANSPORT);
     actionLogRepository = module.get(ACTION_LOG_REPOSITORY);
 
     driverResolver.resolve.mockImplementation(() => new Esp32Driver());
@@ -94,7 +95,7 @@ describe('ActionsService', () => {
     const device = buildDevice();
 
     devicesService.findById.mockResolvedValue(device);
-    esp32Client.sendAction.mockResolvedValue({
+    transport.send.mockResolvedValue({
       endpoint: '/riego/on',
       httpStatusCode: 200,
     });
@@ -121,10 +122,10 @@ describe('ActionsService', () => {
       }),
     ).rejects.toBeInstanceOf(NotFoundException);
 
-    expect(esp32Client.sendAction.mock.calls).toHaveLength(0);
+    expect(transport.send.mock.calls).toHaveLength(0);
   });
 
-  it('throws bad gateway when esp32 client fails', async () => {
+  it('throws bad gateway when transport fails', async () => {
     const device = buildDevice({
       name: 'Luces 1',
       description: 'Control de luces',
@@ -132,7 +133,7 @@ describe('ActionsService', () => {
     });
 
     devicesService.findById.mockResolvedValue(device);
-    esp32Client.sendAction.mockRejectedValue(
+    transport.send.mockRejectedValue(
       new BadGatewayException('Device unreachable'),
     );
 
@@ -153,6 +154,36 @@ describe('ActionsService', () => {
     );
   });
 
+  it('logs the device id and timestamp when the transport fails', async () => {
+    const device = buildDevice({
+      name: 'Luces 1',
+      description: 'Control de luces',
+      ipAddress: '192.168.1.81',
+    });
+
+    devicesService.findById.mockResolvedValue(device);
+    transport.send.mockRejectedValue(
+      new BadGatewayException('Device unreachable'),
+    );
+
+    const loggerSpy = jest.spyOn(
+      (actionsService as unknown as { logger: Logger }).logger,
+      'error',
+    );
+
+    await expect(
+      actionsService.execute(device.id, {
+        action: 'turn_off',
+        target: 'luces',
+      }),
+    ).rejects.toBeInstanceOf(BadGatewayException);
+
+    expect(loggerSpy).toHaveBeenCalledTimes(1);
+    const message = String(loggerSpy.mock.calls[0]?.[0]);
+    expect(message).toContain(device.id);
+    expect(message).toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+  });
+
   it('maps target and action to expected endpoint', async () => {
     const device = buildDevice({
       name: 'Riego 2',
@@ -161,7 +192,7 @@ describe('ActionsService', () => {
     });
 
     devicesService.findById.mockResolvedValue(device);
-    esp32Client.sendAction.mockRejectedValue(
+    transport.send.mockRejectedValue(
       new BadGatewayException('Device unreachable'),
     );
 
@@ -191,7 +222,7 @@ describe('ActionsService', () => {
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
 
-    expect(esp32Client.sendAction.mock.calls).toHaveLength(0);
+    expect(transport.send.mock.calls).toHaveLength(0);
     expect(actionLogRepository.create.mock.calls).toHaveLength(0);
   });
 
@@ -207,7 +238,7 @@ describe('ActionsService', () => {
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
 
-    expect(esp32Client.sendAction.mock.calls).toHaveLength(0);
+    expect(transport.send.mock.calls).toHaveLength(0);
     expect(actionLogRepository.create.mock.calls).toHaveLength(0);
   });
 
@@ -226,7 +257,7 @@ describe('ActionsService', () => {
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
 
-    expect(esp32Client.sendAction.mock.calls).toHaveLength(0);
+    expect(transport.send.mock.calls).toHaveLength(0);
     expect(actionLogRepository.create.mock.calls).toHaveLength(0);
   });
 });
