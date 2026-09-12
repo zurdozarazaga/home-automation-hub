@@ -33,5 +33,6 @@ const esp32ClientProvider = isPrismaDataSource
         : InMemoryActionLogRepository,
     },
   ],
+  exports: [ActionsService],
 })
 export class ActionsModule {}
