@@ -1,7 +1,18 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { IngestTelemetryDto } from './dto/ingest-telemetry.dto';
 import { QueryTelemetryDto } from './dto/query-telemetry.dto';
-import { TelemetryIngestResult, TelemetryReading } from './interfaces/telemetry-reading.interface';
+import {
+  TelemetryIngestResult,
+  TelemetryReading,
+} from './interfaces/telemetry-reading.interface';
 import { TelemetryService } from './telemetry.service';
 
 @Controller('devices/:deviceId/telemetry')

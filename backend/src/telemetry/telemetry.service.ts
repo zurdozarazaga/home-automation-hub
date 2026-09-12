@@ -1,8 +1,4 @@
-import {
-  BadRequestException,
-  Inject,
-  Injectable,
-} from '@nestjs/common';
+import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { DevicesService } from '../devices/devices.service';
 import { TELEMETRY_REPOSITORY } from './constants/telemetry-repository.token';
 import { IngestTelemetryDto } from './dto/ingest-telemetry.dto';

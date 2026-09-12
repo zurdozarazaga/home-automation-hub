@@ -29,7 +29,10 @@ export class InMemoryTelemetryRepository implements TelemetryRepository {
     return Promise.resolve(inputs.length);
   }
 
-  query(deviceId: string, range: TelemetryRangeQuery): Promise<TelemetryReading[]> {
+  query(
+    deviceId: string,
+    range: TelemetryRangeQuery,
+  ): Promise<TelemetryReading[]> {
     const matches = Array.from(this.readings.values())
       .filter(
         (reading) =>
