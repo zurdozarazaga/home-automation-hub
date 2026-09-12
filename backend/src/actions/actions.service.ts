@@ -1,5 +1,13 @@
-import { BadGatewayException, Inject, Injectable } from '@nestjs/common';
+import {
+  BadGatewayException,
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
+import { DEVICE_DRIVER } from '../devices/constants/driver.tokens';
 import { DevicesService } from '../devices/devices.service';
+import { DriverResolverService } from '../devices/drivers/driver-resolver.service';
 import { ACTION_LOG_REPOSITORY } from './constants/action-log-repository.token';
 import { ESP32_CLIENT } from './constants/esp32-client.token';
 import { ExecuteActionDto } from './dto/execute-action.dto';
@@ -16,8 +24,12 @@ import type {
 
 @Injectable()
 export class ActionsService {
+  private readonly logger = new Logger(ActionsService.name);
+
   constructor(
     private readonly devicesService: DevicesService,
+    @Inject(DEVICE_DRIVER)
+    private readonly driverResolver: DriverResolverService,
     @Inject(ESP32_CLIENT)
     private readonly esp32Client: Esp32Client,
     @Inject(ACTION_LOG_REPOSITORY)
@@ -34,6 +46,16 @@ export class ActionsService {
       target: executeActionDto.target,
     };
     const device = await this.devicesService.findById(deviceId);
+    const driver = this.driverResolver.resolve(device.driver);
+
+    if (
+      !device.capabilities.includes(command.target) ||
+      !driver.supports(command.target)
+    ) {
+      throw new BadRequestException(
+        `Target '${command.target}' is not supported by device ${deviceId} (driver '${driver.name}')`,
+      );
+    }
 
     try {
       const response = await this.esp32Client.sendAction(device, command);
@@ -50,9 +72,14 @@ export class ActionsService {
       };
     } catch (error) {
       const fallbackResponse: Esp32CommandResponse = {
-        endpoint: this.resolveEndpoint(command),
+        endpoint: driver.resolveEndpoint(command.action, command.target),
         httpStatusCode: 502,
       };
+
+      this.logger.error(
+        `Action '${command.action}' on target '${command.target}' failed for device ${deviceId} at ${new Date().toISOString()}`,
+        error instanceof Error ? error.stack : error,
+      );
 
       await this.logAction(
         command,
@@ -89,24 +116,6 @@ export class ActionsService {
         errorMessage,
       })
       .then(() => undefined);
-  }
-
-  private resolveEndpoint(command: ActionCommand): string {
-    const endpoints: Record<
-      ActionCommand['target'],
-      Record<ActionCommand['action'], string>
-    > = {
-      riego: {
-        turn_on: '/riego/on',
-        turn_off: '/riego/off',
-      },
-      luces: {
-        turn_on: '/luces/on',
-        turn_off: '/luces/off',
-      },
-    };
-
-    return endpoints[command.target][command.action];
   }
 
   // TODO(mqtt): Add MQTT publisher adapter and route command dispatch through a transport strategy.
