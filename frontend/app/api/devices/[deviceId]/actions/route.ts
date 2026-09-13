@@ -15,6 +15,7 @@ export async function POST(
   try {
     const { deviceId } = await context.params;
     const body = (await request.json()) as ActionRequestBody;
+    const authorization = request.headers.get("authorization");
 
     const response = await fetch(
       `${API_BASE_URL}/devices/${deviceId}/actions`,
@@ -22,6 +23,7 @@ export async function POST(
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...(authorization ? { authorization } : {}),
         },
         body: JSON.stringify(body),
         cache: "no-store",
