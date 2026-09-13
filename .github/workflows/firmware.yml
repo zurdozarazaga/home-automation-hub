@@ -1,0 +1,45 @@
+name: Firmware CI
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "firmware/**"
+      - ".github/workflows/firmware.yml"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "firmware/**"
+      - ".github/workflows/firmware.yml"
+
+jobs:
+  firmware:
+    name: ESP32-S3 firmware build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: ${{ runner.os }}-pio-${{ hashFiles('firmware/esp32/platformio.ini') }}
+
+      - name: Install pioarduino
+        run: pip install -U pioarduino
+
+      - name: No hardcoded secrets
+        run: |
+          if grep -rniE 'WiFi\.begin\(\s*"' firmware/esp32/src; then
+            echo "Hardcoded WiFi credentials found in firmware source" >&2
+            exit 1
+          fi
+
+      - name: Build (no board needed)
+        run: pio run -d firmware/esp32

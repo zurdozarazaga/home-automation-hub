@@ -43,3 +43,10 @@ Thumbs.db
 
 # Certificates and keys
 *.pem
+
+# PlatformIO (firmware/esp32)
+.pio/
+.piolibdeps/
+.pioenvs/
+**/*.elf
+**/*.hex
