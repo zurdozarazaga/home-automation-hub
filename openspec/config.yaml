@@ -1,0 +1,67 @@
+# openspec/config.yaml
+schema: spec-driven
+
+project: home-automation-hub
+persistence: hybrid
+
+context: |
+  Stack: NestJS 11 API (:3001) + Next.js 16 App Router (:3000) + Postgres via Prisma 6 + ESP32 executors + n8n trigger source.
+  Architecture: Frontend -> Backend -> ESP32; thin controllers, logic in services, repository/DI switch via DATA_SOURCE (in-memory|prisma).
+  Auth: JWT + RolesGuard (admin|viewer; service role for n8n is a known TODO).
+  Conventions: AGENTS.md + .github/copilot-instructions.md; dark-mode mobile-first Tailwind v4 UI; Prisma try/catch + HttpException; ESP32 down = 502.
+  Vision source: root spec.md (322 lines). Local dev runs fully in Docker (docker-compose.local.yml).
+
+strict_tdd: false
+# No workspace-level test command covers every in-scope project (no root
+# package.json or Makefile; CI runs per-project jobs). Backend has jest
+# unit + e2e; frontend has no test runner. Downstream phases MUST use
+# the project-local commands below instead of a single workspace command.
+
+projects:
+  - path: backend
+    stack: NestJS 11 + Prisma 6 + class-validator + Jest 30 + supertest
+    test_command: npm run test -- --runInBand (from backend/)
+    test_e2e_command: npm run test:e2e (from backend/)
+    coverage_command: npm run test:cov (from backend/)
+    lint_command: npm run lint (from backend/)
+    format_command: npm run format (from backend/)
+    build_command: npm run build (from backend/)
+  - path: frontend
+    stack: Next.js 16 + React 19 + TailwindCSS v4 + TypeScript strict
+    test_command: none (no test runner configured)
+    coverage_command: none
+    lint_command: npm run lint (from frontend/)
+    build_command: npm run build (from frontend/)
+
+testing:
+  unit: backend jest (*.spec.ts under src/, 3 spec files present)
+  integration: backend supertest e2e (test/*.e2e-spec.ts via test/jest-e2e.json)
+  e2e: none configured (playwright appears only as a transitive dep in the frontend lockfile)
+
+rules:
+  proposal:
+    - Include rollback plan for risky changes
+    - Respect constraint priority: Security > Architecture Principles > Backend Standards > API Standards > Code Quality > Future Compatibility
+  specs:
+    - Use Given/When/Then for scenarios
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
+  design:
+    - Include sequence diagrams for complex flows
+    - Document architecture decisions with rationale
+    - Never put business logic on ESP32; frontend never calls ESP32 directly
+  tasks:
+    - Group by phase, use hierarchical numbering
+    - Keep tasks completable in one session
+  apply:
+    guidelines:
+      - Follow existing code patterns (thin controllers, services, repository/DI via DATA_SOURCE)
+      - Wrap all Prisma calls in try/catch; throw HttpException, never leak raw Prisma errors
+      - ESP32 unreachable MUST return 502 BadGatewayException with device ID + timestamp logged
+    tdd: false
+    test_command: ""
+  verify:
+    test_command: ""
+    build_command: ""
+    coverage_threshold: 0
+  archive:
+    - Warn before merging destructive deltas

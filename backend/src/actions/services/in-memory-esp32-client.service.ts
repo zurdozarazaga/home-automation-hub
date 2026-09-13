@@ -8,14 +8,14 @@ import {
 
 @Injectable()
 export class InMemoryEsp32ClientService implements Esp32Client {
-  async sendAction(
+  sendAction(
     _device: Device,
     command: ActionCommand,
   ): Promise<Esp32CommandResponse> {
-    return {
+    return Promise.resolve({
       endpoint: this.resolveEndpoint(command.action, command.target),
       httpStatusCode: 200,
-    };
+    });
   }
 
   private resolveEndpoint(
