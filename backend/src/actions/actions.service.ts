@@ -9,7 +9,7 @@ import { DEVICE_DRIVER } from '../devices/constants/driver.tokens';
 import { DevicesService } from '../devices/devices.service';
 import { DriverResolverService } from '../devices/drivers/driver-resolver.service';
 import { ACTION_LOG_REPOSITORY } from './constants/action-log-repository.token';
-import { ESP32_CLIENT } from './constants/esp32-client.token';
+import { DEVICE_TRANSPORT } from './constants/device-transport.token';
 import { ExecuteActionDto } from './dto/execute-action.dto';
 import type { ActionLogRepository } from './interfaces/action-log-repository.interface';
 import type {
@@ -18,9 +18,9 @@ import type {
   ActionResultStatus,
 } from './interfaces/action.interface';
 import type {
-  Esp32Client,
-  Esp32CommandResponse,
-} from './interfaces/esp32-client.interface';
+  DeviceTransport,
+  TransportSendResult,
+} from './transport/device-transport.interface';
 
 @Injectable()
 export class ActionsService {
@@ -30,8 +30,8 @@ export class ActionsService {
     private readonly devicesService: DevicesService,
     @Inject(DEVICE_DRIVER)
     private readonly driverResolver: DriverResolverService,
-    @Inject(ESP32_CLIENT)
-    private readonly esp32Client: Esp32Client,
+    @Inject(DEVICE_TRANSPORT)
+    private readonly transport: DeviceTransport,
     @Inject(ACTION_LOG_REPOSITORY)
     private readonly actionLogRepository: ActionLogRepository,
   ) {}
@@ -58,7 +58,7 @@ export class ActionsService {
     }
 
     try {
-      const response = await this.esp32Client.sendAction(device, command);
+      const response = await this.transport.send(device, command);
       await this.logAction(command, response, 'success');
 
       return {
@@ -71,7 +71,7 @@ export class ActionsService {
         executedAt: new Date(),
       };
     } catch (error) {
-      const fallbackResponse: Esp32CommandResponse = {
+      const fallbackResponse: TransportSendResult = {
         endpoint: driver.resolveEndpoint(command.action, command.target),
         httpStatusCode: 502,
       };
@@ -100,7 +100,7 @@ export class ActionsService {
 
   private logAction(
     command: ActionCommand,
-    response: Esp32CommandResponse,
+    response: TransportSendResult,
     result: ActionResultStatus,
     errorMessage?: string,
   ): Promise<void> {
@@ -118,6 +118,5 @@ export class ActionsService {
       .then(() => undefined);
   }
 
-  // TODO(mqtt): Add MQTT publisher adapter and route command dispatch through a transport strategy.
   // TODO(websocket): Add WebSocket event broadcasting for action lifecycle updates.
 }

@@ -4,7 +4,8 @@ export type DashboardZone = Readonly<{
   status: string;
   statusTone: string;
   accent: string;
-  actionTarget: "riego" | "luces";
+  // Widened: the backend capability-checks driver-declared targets at runtime.
+  actionTarget: string;
   deviceId?: string;
 }>;
 

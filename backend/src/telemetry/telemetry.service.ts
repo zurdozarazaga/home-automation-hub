@@ -14,6 +14,9 @@ const MAX_LIMIT = 1000;
 const DEFAULT_WINDOW_MS = 24 * 60 * 60 * 1000;
 const MAX_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
+// TODO(tsdb): move range queries to a time-series store (retention,
+// downsampling, Grafana) once telemetry volume outgrows Postgres + bounds.
+
 @Injectable()
 export class TelemetryService {
   constructor(

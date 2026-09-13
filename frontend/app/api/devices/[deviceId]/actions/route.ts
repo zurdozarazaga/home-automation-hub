@@ -5,7 +5,8 @@ const API_BASE_URL =
 
 type ActionRequestBody = Readonly<{
   action: "turn_on" | "turn_off";
-  target: "riego" | "luces";
+  // Widened: the backend capability-checks driver-declared targets at runtime.
+  target: string;
 }>;
 
 export async function POST(

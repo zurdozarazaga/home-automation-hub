@@ -9,7 +9,8 @@ type ZoneControlCardProps = Readonly<{
   statusTone: string;
   accent: string;
   deviceId?: string;
-  actionTarget: "riego" | "luces";
+  // Widened: the backend capability-checks driver-declared targets at runtime.
+  actionTarget: string;
 }>;
 
 type ZoneAction = "turn_on" | "turn_off";
