@@ -1,5 +1,6 @@
 import { Controller, Get } from '@nestjs/common';
 import { DevicesService } from '../devices/devices.service';
+import { Public } from '../auth/decorators/public.decorator';
 
 interface ApiHealthResponse {
   status: 'ok';
@@ -17,6 +18,7 @@ interface DevicesHealthResponse {
 }
 
 @Controller('health')
+@Public()
 export class HealthController {
   constructor(private readonly devicesService: DevicesService) {}
 
