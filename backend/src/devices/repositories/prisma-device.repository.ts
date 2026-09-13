@@ -87,6 +87,9 @@ export class PrismaDeviceRepository implements DeviceRepository {
         data: {
           name: input.name,
           description: input.description,
+          driver: input.driver ?? 'esp32',
+          capabilities: input.capabilities ?? ['riego', 'luces'],
+          mqttTopic: input.mqttTopic,
           ipAddress: input.ipAddress,
           port: input.port,
           status: 'offline',
@@ -175,8 +178,11 @@ export class PrismaDeviceRepository implements DeviceRepository {
     id: string;
     name: string;
     description: string;
-    ipAddress: string;
-    port: number;
+    driver: string;
+    capabilities: string[];
+    mqttTopic: string | null;
+    ipAddress: string | null;
+    port: number | null;
     status: string;
     createdAt: Date;
     updatedAt: Date;
@@ -187,6 +193,9 @@ export class PrismaDeviceRepository implements DeviceRepository {
       id: device.id,
       name: device.name,
       description: device.description,
+      driver: device.driver,
+      capabilities: device.capabilities,
+      mqttTopic: device.mqttTopic ?? undefined,
       ipAddress: device.ipAddress,
       port: device.port,
       status,

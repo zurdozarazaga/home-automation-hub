@@ -1,5 +1,6 @@
 export type DeviceAction = 'turn_on' | 'turn_off';
-export type DeviceTarget = 'riego' | 'luces';
+/** Driver-declared target; capability-checked against the device at runtime. */
+export type DeviceTarget = string;
 export type ActionResultStatus = 'success' | 'failed';
 
 export interface ActionCommand {
