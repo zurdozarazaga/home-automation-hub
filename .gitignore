@@ -38,5 +38,8 @@ frontend/.vercel/
 .DS_Store
 Thumbs.db
 
+# Agent-local tooling (machine-specific absolute paths, auto-generated)
+.atl/
+
 # Certificates and keys
 *.pem
