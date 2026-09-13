@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from './../src/app.module';
@@ -8,6 +9,7 @@ import { setupApp } from './../src/setup-app';
 describe('AppController (e2e)', () => {
   let app: INestApplication<App>;
   let fetchSpy: jest.SpiedFunction<typeof fetch>;
+  let adminToken: string;
 
   const buildFetchResponse = (statusCode: number): Response => {
     return new Response(
@@ -29,6 +31,10 @@ describe('AppController (e2e)', () => {
     app = moduleFixture.createNestApplication();
     setupApp(app);
     await app.init();
+
+    adminToken = await new JwtService({
+      secret: process.env.JWT_SECRET ?? 'test-secret',
+    }).signAsync({ sub: 'e2e-admin', role: 'admin' });
 
     fetchSpy = jest
       .spyOn(globalThis, 'fetch')
@@ -70,6 +76,7 @@ describe('AppController (e2e)', () => {
   it('/devices (POST + GET)', async () => {
     const createResponse = await request(app.getHttpServer())
       .post('/devices')
+      .set('Authorization', `Bearer ${adminToken}`)
       .send({
         name: 'Riego Patio',
         description: 'Nodo de riego principal',
@@ -90,6 +97,7 @@ describe('AppController (e2e)', () => {
 
     const listResponse = await request(app.getHttpServer())
       .get('/devices')
+      .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
     const devices = listResponse.body as Array<{ id: string }>;
 
@@ -100,6 +108,7 @@ describe('AppController (e2e)', () => {
   it('/devices (POST invalid payload)', () => {
     return request(app.getHttpServer())
       .post('/devices')
+      .set('Authorization', `Bearer ${adminToken}`)
       .send({
         name: '',
         description: 'x',
@@ -123,6 +132,7 @@ describe('AppController (e2e)', () => {
   it('/devices/:id/actions (POST success)', async () => {
     const createResponse = await request(app.getHttpServer())
       .post('/devices')
+      .set('Authorization', `Bearer ${adminToken}`)
       .send({
         name: 'Luces Terraza',
         description: 'Nodo de luces terraza',
@@ -134,6 +144,7 @@ describe('AppController (e2e)', () => {
 
     const actionResponse = await request(app.getHttpServer())
       .post(`/devices/${createdDevice.id}/actions`)
+      .set('Authorization', `Bearer ${adminToken}`)
       .send({
         action: 'turn_on',
         target: 'luces',
@@ -156,6 +167,7 @@ describe('AppController (e2e)', () => {
 
     const createResponse = await request(app.getHttpServer())
       .post('/devices')
+      .set('Authorization', `Bearer ${adminToken}`)
       .send({
         name: 'Bomba Jardin',
         description: 'Nodo de bomba',
@@ -167,6 +179,7 @@ describe('AppController (e2e)', () => {
 
     await request(app.getHttpServer())
       .post(`/devices/${createdDevice.id}/actions`)
+      .set('Authorization', `Bearer ${adminToken}`)
       .send({
         action: 'turn_off',
         target: 'riego',
