@@ -11,7 +11,7 @@
 
 #include <Arduino.h>
 #include <ElegantOTA.h>
-#include <ESPAsyncWebServer.h>
+#include <WebServer.h>
 
 #include "api/web_routes.h"
 #include "hal/relays.h"
@@ -22,7 +22,7 @@ constexpr unsigned long kSerialBaud = 115200;
 constexpr uint16_t kHttpPort = 80;
 }  // namespace
 
-AsyncWebServer server(kHttpPort);
+WebServer server(kHttpPort);
 
 void setup() {
   Serial.begin(kSerialBaud);
@@ -46,6 +46,7 @@ void setup() {
 }
 
 void loop() {
+  server.handleClient();
   ElegantOTA.loop();
   net::wifi::maintain();
   delay(100);
