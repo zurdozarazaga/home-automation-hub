@@ -1,24 +1,51 @@
-import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
+import {
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+  Injectable,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { ROLES_KEY } from '../decorators/roles.decorator';
-import { Role } from '../interfaces/role.interface';
+import type { JwtPayload } from '../interfaces/jwt-payload.interface';
+import type { Role } from '../interfaces/role.interface';
 
 @Injectable()
 export class RolesGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
+    if (this.isPublic(context)) {
+      return true;
+    }
+
     const requiredRoles = this.reflector.getAllAndOverride<Role[]>(ROLES_KEY, [
       context.getHandler(),
       context.getClass(),
     ]);
 
+    // Deny by default: routes without explicit @Roles() are forbidden
+    // unless marked @Public().
     if (!requiredRoles || requiredRoles.length === 0) {
-      return true;
+      throw new ForbiddenException('Insufficient role');
     }
 
-    // TODO(auth): Replace this placeholder with JWT-based role extraction from request.user.
-    // TODO(auth): Enforce admin/viewer permissions after authentication module is implemented.
+    const request = context.switchToHttp().getRequest<{ user?: JwtPayload }>();
+    const role = request.user?.role;
+
+    if (!role || !requiredRoles.includes(role)) {
+      throw new ForbiddenException('Insufficient role');
+    }
+
     return true;
+  }
+
+  private isPublic(context: ExecutionContext): boolean {
+    return (
+      this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
+        context.getHandler(),
+        context.getClass(),
+      ]) ?? false
+    );
   }
 }
