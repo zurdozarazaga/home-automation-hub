@@ -21,6 +21,7 @@ model Device {
   updatedAt    DateTime    @updatedAt @map("updated_at")
   relays       Relay[]
   actionLogs   ActionLog[]
+  telemetry    TelemetryReading[]
 
   @@unique([ipAddress, port])
   @@map("devices")
@@ -53,4 +54,19 @@ model ActionLog {
 
   @@index([deviceId, createdAt])
   @@map("action_logs")
+}
+
+model TelemetryReading {
+  id       String   @id @default(uuid()) @db.Uuid
+  deviceId String   @map("device_id") @db.Uuid
+  ts       DateTime
+  metric   String   @db.VarChar(60)
+  value    Float    @db.DoublePrecision
+  unit     String?  @db.VarChar(20)
+  source   String?  @db.VarChar(60)
+  device   Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId, ts])
+  @@index([deviceId, metric, ts])
+  @@map("telemetry_readings")
 }
