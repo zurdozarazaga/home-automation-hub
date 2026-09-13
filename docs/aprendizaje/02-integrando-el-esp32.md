@@ -8,7 +8,7 @@ Se puede avanzar el firmware del ESP32-S3 sin hardware usando contrato HTTP prim
 2. Desarrolla contra el mock: `DATA_SOURCE=in-memory` usa `InMemoryEsp32ClientService`, sin placa ni DB.
 3. Cuando llegue la placa, compila y flashea en VS Code con PlatformIO por USB; el backend cambia a `DATA_SOURCE=prisma` sin reescribir lógica.
 
-> Estado real: `firmware/` todavía no existe en el repo. El ESP32-S3 está planificado. Todo lo de este documento es contrato + estrategia vigente, no código existente.
+> Estado real: scaffold `firmware/` mergeado a `develop` (PR #14, ESP32-S3). Compila en CI (pioarduino exige Python ≥ 3.10; en local no compila). Sin hardware aún: el contrato + mock siguen vigentes y el siguiente real es el GPIO de relés.
 
 ## Detalles
 
@@ -163,4 +163,4 @@ Si C++ es el idioma del firmware, PlatformIO es el entorno que lo construye, adm
 
 ## Próximo paso
 
-Crear el scaffold `firmware/` en el repo (`platformio.ini` + estructura `hal/net/api` + `GET /health` como primer endpoint). No requiere la placa: se valida compilando. En paralelo sigue abierto el PR #12 y el swap del nodo MQTT en n8n (ver doc 03).
+El scaffold `firmware/` ya está mergeado (PR #14: `platformio.ini` + estructura `hal/net/api` + `GET /health`, compila en CI). El PR #12 también está mergeado. Siguiente real: GPIO de relés (paso 2 del roadmap; sin placa se valida compilando). En paralelo, el swap del nodo MQTT en n8n (ver doc 03).
