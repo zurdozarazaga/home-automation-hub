@@ -34,5 +34,6 @@ const isPrismaDataSource = process.env.DATA_SOURCE === 'prisma';
         : InMemoryActionLogRepository,
     },
   ],
+  exports: [ActionsService],
 })
 export class ActionsModule {}
