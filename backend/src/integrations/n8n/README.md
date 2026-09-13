@@ -1,38 +1,25 @@
 # N8nModule
 
-Adapter que recibe llamadas del workflow n8n `sistema_riego_automatizado`
-y las delega al `ActionsService` del backend, que a su vez orquesta el ESP32
-y registra el `ActionLog`.
+Adapter that receives calls from the n8n workflow `sistema_riego_automatizado`
+and delegates them to the backend `ActionsService`, which orchestrates the
+ESP32 and records the `ActionLog`.
 
-## Estado actual: esqueleto
+## Current state: guarded dispatch
 
-El controller existe para fijar la ruta (`POST /integrations/n8n/actions`)
-y dejar claro el contrato, pero **no implementa lógica** todavía. Devuelve
-`501 Not Implemented`. El motivo es que depende de tres prerrequisitos
-del módulo de auth que aún no están resueltos:
+`POST /integrations/n8n/actions` requires the `service` role
+(`@Roles('service')`, enforced by the global guards). The controller
+delegates to `ActionsService.execute(deviceId, dto)`; the `deviceId` travels
+in the body (`N8nTriggerActionDto`). Validation errors yield 400, dispatch
+by any non-service role yields 403, and an unreachable ESP32 yields 502.
 
-1. El rol `service` no existe en `Role` (hoy solo `admin` y `viewer`).
-2. `RolesGuard` aún no extrae roles del JWT (tiene un TODO).
-3. No hay flujo para emitir/rotar el JWT de la cuenta de servicio.
+## Service credential
 
-Hasta que esos tres puntos estén cerrados, **no exponer este endpoint a
-tráfico real**: el controller no tiene auth aplicada.
+Issued offline via `npm run auth:issue-service`
+(`sub: 'n8n-sistema-riego'`, `role: 'service'`, 24h TTL). Rotation runbook:
+[`../../../docs/integrations/n8n.md`](../../../docs/integrations/n8n.md).
 
-## Trabajo pendiente
+## References
 
-- [ ] Agregar `'service'` a `backend/src/auth/interfaces/role.interface.ts`
-- [ ] Reemplazar el `return true` placeholder en `roles.guard.ts` por la
-      lectura real del rol desde `request.user`
-- [ ] Emitir un JWT dedicado (`sub: 'n8n-sistema-riego'`, `role: 'service'`)
-      y guardarlo como credencial HTTP Header Auth en n8n.opi.ar
-- [ ] Implementar `N8nService.dispatch(deviceId, dto)` que llame a
-      `ActionsService.execute`
-- [ ] Aplicar `@Roles('service')` + `UseGuards(RolesGuard, AuthGuard)` al
-      controller y cambiar `@HttpCode(501)` por el código real (200/201)
-- [ ] Escribir un e2e test que mockee el ESP32 y verifique el log
-
-## Referencias
-
-- Regla arquitectónica y endpoint destino: [`../../../AGENTS.md`](../../../AGENTS.md)
-- Detalle operativo: [`../../../docs/integrations/n8n.md`](../../../docs/integrations/n8n.md)
+- Architectural rule and target endpoint: [`../../../AGENTS.md`](../../../AGENTS.md)
+- Operational detail: [`../../../docs/integrations/n8n.md`](../../../docs/integrations/n8n.md)
 - `ActionsService`: `../../actions/actions.service.ts`

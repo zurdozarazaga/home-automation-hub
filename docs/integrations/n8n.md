@@ -92,17 +92,24 @@ El rol se llama `service` (no `admin`) para:
   no un email de admin.
 - Permitir revocación independiente del resto de usuarios.
 
-**Estado actual:** el `RolesGuard` en
-`backend/src/auth/guards/roles.guard.ts` solo conoce `admin` y `viewer`. El
-rol `service` es un TODO conocido. Hasta que exista:
+**Estado actual:** el rol `service` existe
+(`backend/src/auth/interfaces/role.interface.ts`) y los guards globales lo
+exigen en `POST /devices/:deviceId/actions` (`admin`, `service`) y en
+`POST /integrations/n8n/actions` (`service` exclusivo).
 
-- Opción A (temporal): emitir un JWT con `role: "admin"` y guardarlo como
-  secret de n8n. **No recomendado** para producción.
-- Opción B (correcta): agregar `service` al enum de roles, crear un
-  usuario dedicado en la tabla correspondiente, rotar el JWT.
+## Service token: issuance and rotation
 
-Pendiente: rotar el JWT y guardarlo en las credenciales de n8n
-(`n8n-nodes-base.httpRequest` auth type `genericCredentialType: "httpHeaderAuth"`).
+- **Issue:** `JWT_SECRET=<secret> npm run auth:issue-service -- <sub>`
+  (from `backend/`; `<sub>` defaults to `n8n-sistema-riego`). TTL 24h.
+- **Store:** save the token as the n8n HTTP Header Auth credential
+  (`Authorization: Bearer <JWT>`). Never commit tokens to the repo.
+- **Rotate (leak suspected):** re-issue, update the n8n credential, confirm
+  a dispatch succeeds. Calls with the old token fail once it expires.
+- **Full invalidation:** rotate `JWT_SECRET` (root `.env`, `backend/.env`,
+  CI env) and re-issue all service tokens. All previously issued tokens
+  stop verifying immediately.
+- **Expiry symptom:** backend responds 401. Re-issue and update the n8n
+  credential — do not retry in a loop.
 
 ---
 
@@ -128,7 +135,7 @@ Pendiente: rotar el JWT y guardarlo en las credenciales de n8n
   ```
 - **Response 502:** ESP32 caído. `ActionLog` queda con `result: "failed"`,
   `httpStatusCode: 502`, `errorMessage` poblado.
-- **Auth:** JWT con rol `service` (o `admin` mientras no exista `service`).
+- **Auth:** JWT con rol `service`.
 
 ### `GET /devices`
 
@@ -179,5 +186,7 @@ Confirmar la URL con quien levantó la instancia.
 - Backend `ActionsService`: `backend/src/actions/actions.service.ts`
 - Backend `ActionsController`: `backend/src/actions/actions.controller.ts`
 - ESP32 client: `backend/src/actions/services/esp32-http-client.service.ts`
-- RolesGuard (pendiente extender con `service`):
-  `backend/src/auth/guards/roles.guard.ts`
+- Roles (`admin`, `viewer`, `service`):
+  `backend/src/auth/interfaces/role.interface.ts`
+- Guards (`JwtAuthGuard` 401 + `RolesGuard` 403):
+  `backend/src/auth/guards/`
