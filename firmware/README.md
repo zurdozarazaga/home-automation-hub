@@ -1,14 +1,14 @@
 # Firmware ESP32-S3
 
-Scaffold inicial del firmware de la placa ESP32-S3 DevKitC-1 para el Home Automation Hub. Todo se verifica sin placa (compilación + CI); solo `upload` y `monitor` requieren el hardware.
+Firmware de la placa ESP32-S3 DevKitC-1 para el Home Automation Hub. Todo se verifica sin placa (compilación + CI); solo `upload`, `monitor` y las pruebas con hardware requieren la placa.
 
 ## Alcance de este slice
 
-- Hola por Serial, WiFi con credenciales desde NVS y reconexión.
-- `GET /health` y `GET /estado` con JSON de estado.
-- `POST /riego/on|off` y `POST /luces/on|off` como stubs que solo registran en el log (el GPIO real llega en el siguiente slice).
-- Tabla de particiones con OTA desde el día 1 (`factory` + `ota_0` + `ota_1`).
-- Estructura `hal/` (salidas físicas), `net/` (WiFi/red), `api/` (rutas HTTP) para poder migrar a ESP-IDF sin reescribir.
+- GPIO real de relés: `riego` en GPIO4 y `luces` en GPIO5 (active-low, fail-safe OFF al arranque).
+- `POST /riego/on|off` y `POST /luces/on|off` accionan hardware y responden con el estado resultante.
+- `GET /estado` reporta el estado real leído del hardware (ya no estático); `GET /health` sin cambios.
+- Tabla de cableado y orden de pruebas para cuando llegue la placa.
+- WiFi desde NVS, OTA y particiones sin cambios.
 
 ## Contrato HTTP (lo que el backend consume)
 
@@ -16,10 +16,10 @@ Scaffold inicial del firmware de la placa ESP32-S3 DevKitC-1 para el Home Automa
 |---------------------|--------------------------------------------------|
 | `GET /health`       | 200 + `{status, uptime_s, free_heap}`            |
 | `GET /estado`       | 200 + `{status, uptime_s, free_heap, rssi_dbm, relays}` |
-| `POST /riego/on`    | 200 + `{ok, target, action, applied: false, note}` (stub) |
-| `POST /riego/off`   | 200 + stub                                       |
-| `POST /luces/on`    | 200 + stub                                       |
-| `POST /luces/off`   | 200 + stub                                       |
+| `POST /riego/on`    | 200 + `{ok, target, action, state, applied: true}` (acciona GPIO4) |
+| `POST /riego/off`   | 200 + estado resultante                                       |
+| `POST /luces/on`    | 200 + `{ok, target, action, state, applied: true}` (acciona GPIO5) |
+| `POST /luces/off`   | 200 + estado resultante                                       |
 
 El backend mapea `POST /devices/:deviceId/actions {action, target}` a estas rutas. Si la placa no responde, el backend devuelve 502 y guarda el `ActionLog` como `failed`.
 
@@ -48,6 +48,31 @@ pio device monitor -d firmware/esp32
 2. Si el primer flash falla o queda colgado, pon la placa en modo DOWNLOAD: mantén pulsado BOOT, pulsa y suelta RESET, suelta BOOT. Luego ejecuta `pio run -d firmware/esp32 -t upload`.
 3. Tras un flash correcto, pulsa RESET una vez. Los siguientes flashes ya son normales.
 4. Abre el monitor y espera el `hello from ESP32-S3` más las líneas `[hub][hal]`, `[hub][net]` y `[hub][api]`.
+
+## Cableado de relés (solo con placa)
+
+Módulo de 2 canales con optoacoplador, lógica active-low (LOW = relé ON).
+
+| Señal ESP32 | Módulo | Notas |
+|-------------|--------|-------|
+| GPIO4 | IN1 | `riego` |
+| GPIO5 | IN2 | `luces` |
+| 3V3 | VCC | lado lógico del optoacoplador (quitar el jumper JD-VCC) |
+| GND | GND | tierra común con la fuente de 5 V |
+| (fuente 5 V dedicada) | JD-VCC | alimenta las bobinas, NO sale de la placa |
+
+Reglas:
+
+- Nunca alimentes la bobina desde un pin GPIO: el pin entrega lógica a 3,3 V y pocos mA; cada bobina pide ~70 mA a 5 V y tumbaría o dañaría la S3.
+- Quita el jumper JD-VCC para separar la alimentación de bobinas (5 V externos) de la lógica (3V3 de la placa); une las tierras.
+- El fail-safe está en el firmware: al arrancar, ambos canales quedan en OFF antes de WiFi y del servidor.
+
+Orden de pruebas cuando llegue la placa:
+
+1. LED RGB interno (GPIO48): valida flasheo y arranque sin cablear nada.
+2. LED + resistencia a GND en GPIO4: valida niveles de salida.
+3. Un canal del relé sin carga (escucha el clic, mide continuidad COM/NO): valida polaridad active-low y cableado.
+4. Relé con carga real: prueba final.
 
 ## Secretos por NVS (nunca en el repo)
 
@@ -81,11 +106,11 @@ firmware/esp32/
   platformio.ini        entorno esp32-s3-devkitc-1 (pioarduino, Arduino, LittleFS)
   partitions.csv        factory + ota_0 + ota_1 + NVS + LittleFS (flash 8 MB)
   src/main.cpp          arranque: Serial, fail-safe, WiFi, rutas, OTA
-  src/hal/relays.h      salidas físicas (stubs en este slice)
+  src/hal/relays.h      relés reales en GPIO4/5 (active-low, fail-safe)
   src/net/wifi_nvs.h    WiFi STA desde NVS + reconexión
   src/api/web_routes.h  contrato HTTP + JSON de estado
 ```
 
 ## Roadmap (de `docs/aprendizaje/02-integrando-el-esp32.md`)
 
-Siguiente slice: GPIO real de relés. Después, en orden: sensor, watchdog + fail-safe completo, OTA funcional verificada, MQTT (n8n nunca publica directo a la placa), e2e NestJS → placa y endurecimiento.
+Hecho en este slice: GPIO real de relés. Siguiente, en orden: sensor, watchdog + fail-safe completo, OTA funcional verificada, MQTT (n8n nunca publica directo a la placa), e2e NestJS → placa y endurecimiento.

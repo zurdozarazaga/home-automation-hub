@@ -5,8 +5,8 @@
 // GET /estado, GET /health. The backend maps
 // POST /devices/:deviceId/actions {action, target} onto these endpoints;
 // a silent board surfaces there as HTTP 502, so handlers stay small and
-// never block. Relay POSTs are stubs in this slice: they log only, the
-// real GPIO lands in the relay slice.
+// never block. Relay POSTs drive real GPIO through hal::relays and answer
+// with the resulting hardware state.
 //
 // Sync WebServer from the Arduino core on purpose: ElegantOTA only exposes
 // begin(WebServer*), so an async server does not fit. Revisit only if the
@@ -50,17 +50,16 @@ inline void registerRoutes(WebServer& server) {
 
   auto relayStub = [&server](const char* target, bool on) {
     return [&server, target, on]() {
-      if (strcmp(target, "riego") == 0) {
-        hal::relays::setRiego(on);
-      } else {
-        hal::relays::setLuces(on);
-      }
+      const hal::relays::Relay relay = (strcmp(target, "riego") == 0)
+                                           ? hal::relays::Relay::Riego
+                                           : hal::relays::Relay::Luces;
+      hal::relays::setRelay(relay, on);
       JsonDocument doc;
       doc["ok"] = true;
       doc["target"] = target;
       doc["action"] = on ? "turn_on" : "turn_off";
-      doc["applied"] = false;
-      doc["note"] = "stub: GPIO lands in the relay slice";
+      doc["state"] = hal::relays::isRelayOn(relay) ? "on" : "off";
+      doc["applied"] = true;
       sendJson(server, doc);
     };
   };
