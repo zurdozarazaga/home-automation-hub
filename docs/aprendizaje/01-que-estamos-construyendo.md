@@ -79,9 +79,9 @@ El cambio se resuelve al arrancar (`DevicesModule`, `ActionsModule`). `DatabaseM
 
 | Hito | Estado |
 |---|---|
-| `iiot-extensibility-seams` (seams driver/telemetría/transporte, PRs #6-8) | Archivado |
-| `auth-hardening` (guards globales 401/403, rol `service`, CLI offline TTL 24h, 15 tareas, 6 commits) | Archivado; PR #12 abierto en `feat/auth-hardening` |
-| Firmware ESP32-S3 | Sin hardware aún; estrategia mock + contrato primero (ver doc 02) |
+| `iiot-extensibility-seams` (seams driver/telemetría/transporte, PRs #6-8) | Archivado y mergeado |
+| `auth-hardening` (guards globales 401/403, rol `service`, CLI offline TTL 24h, 15 tareas, 6 commits) | Archivado y mergeado a `develop` (PR #12) |
+| Firmware ESP32-S3 | Scaffold inicial mergeado (PR #14, compila en CI); sin hardware aún, estrategia mock + contrato primero (ver doc 02) |
 | Despliegue frontend/backend | Pendiente de decisión |
 
 Gitflow vigente: rama desde `develop`, PR hacia `develop`, commits convencionales, CI en verde, mergea el humano.
@@ -95,4 +95,4 @@ Gitflow vigente: rama desde `develop`, PR hacia `develop`, commits convencionale
 
 ## Próximo paso
 
-Revisar el PR #12 (`feat/auth-hardening` → `develop`): es la puerta de entrada al estado actual de auth. Después, leer `02-integrando-el-esp32.md` para entender cómo se trabaja sin la placa, y `03-desafios-y-como-se-resuelven.md` para el contexto de decisiones difíciles.
+El PR #12 (`auth-hardening` → `develop`) ya está mergeado: el estado actual de auth se lee directo en `develop`. Después, leer `02-integrando-el-esp32.md` para el scaffold ya mergeado (PR #14) y el siguiente real (GPIO de relés), y `03-desafios-y-como-se-resuelven.md` para el contexto de decisiones difíciles.
