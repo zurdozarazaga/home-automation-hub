@@ -1,11 +1,13 @@
-// main.cpp - Home Automation Hub firmware, slice 1 (scaffold).
+// main.cpp - Home Automation Hub firmware.
 //
 // Boots an ESP32-S3 DevKitC-1 with: Serial hello, fail-safe relay state,
-// WiFi from NVS credentials, GET /health, GET /estado, and stub
-// POST /riego + /luces (log only, no GPIO yet).
+// DHT22 ambient sensing (cached reads), WiFi from NVS credentials,
+// GET /health, GET /estado (relays + sensors), and POST /riego + /luces
+// driving real GPIO.
 //
 // Layering (header-only on purpose, kept migration-friendly to ESP-IDF):
 //   hal/ -> physical outputs (safe state first)
+//   sensors/ -> physical inputs (cached reads, never block the server)
 //   net/  -> WiFi + NVS credentials + reconnect
 //   api/  -> HTTP contract consumed by the NestJS backend
 
@@ -16,6 +18,7 @@
 #include "api/web_routes.h"
 #include "hal/relays.h"
 #include "net/wifi_nvs.h"
+#include "sensors/dht22.h"
 
 namespace {
 constexpr unsigned long kSerialBaud = 115200;
@@ -35,6 +38,9 @@ void setup() {
   // Fail-safe first: relays to safe state before anything else runs.
   hal::relays::applySafeState();
 
+  // Sensor init is hardware-only (no network), so it runs before WiFi.
+  sensors::dht22::begin();
+
   if (!net::wifi::connectFromNvs()) {
     Serial.println("[hub][net] continuing without WiFi, HTTP unreachable until provisioned");
   }
@@ -49,5 +55,6 @@ void loop() {
   server.handleClient();
   ElegantOTA.loop();
   net::wifi::maintain();
+  sensors::dht22::update();
   delay(100);
 }
