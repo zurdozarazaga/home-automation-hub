@@ -8,6 +8,7 @@ Firmware de la placa ESP32-S3 DevKitC-1 para el Home Automation Hub. Todo se ver
 - `POST /riego/on|off` y `POST /luces/on|off` accionan hardware y responden con el estado resultante.
 - `GET /estado` reporta el estado real leído del hardware (ya no estático); `GET /health` sin cambios.
 - Tabla de cableado y orden de pruebas para cuando llegue la placa.
+- Sensor DHT22 en GPIO15: `GET /estado` suma objeto `sensors` con la última lectura cacheada (intervalo 10 s); flag `SENSOR_FAKE` para validar el JSON sin sensor cableado.
 - WiFi desde NVS, OTA y particiones sin cambios.
 
 ## Contrato HTTP (lo que el backend consume)
@@ -15,7 +16,7 @@ Firmware de la placa ESP32-S3 DevKitC-1 para el Home Automation Hub. Todo se ver
 | Método + ruta       | Respuesta en este slice                          |
 |---------------------|--------------------------------------------------|
 | `GET /health`       | 200 + `{status, uptime_s, free_heap}`            |
-| `GET /estado`       | 200 + `{status, uptime_s, free_heap, rssi_dbm, relays}` |
+| `GET /estado`       | 200 + `{status, uptime_s, free_heap, rssi_dbm, relays, sensors}` (`sensors`: `{temperature_c, humidity_pct, valid, age_s}`; nulos hasta la primera lectura) |
 | `POST /riego/on`    | 200 + `{ok, target, action, state, applied: true}` (acciona GPIO4) |
 | `POST /riego/off`   | 200 + estado resultante                                       |
 | `POST /luces/on`    | 200 + `{ok, target, action, state, applied: true}` (acciona GPIO5) |
@@ -73,6 +74,20 @@ Orden de pruebas cuando llegue la placa:
 2. LED + resistencia a GND en GPIO4: valida niveles de salida.
 3. Un canal del relé sin carga (escucha el clic, mide continuidad COM/NO): valida polaridad active-low y cableado.
 4. Relé con carga real: prueba final.
+5. DHT22 con `SENSOR_FAKE` primero (valida la forma del JSON en `/estado` sin cablear), luego cableado (valores reales en el log y en `/estado`).
+
+## Cableado DHT22 (solo con placa)
+
+| Señal ESP32 | DHT22 | Notas |
+|-------------|-------|-------|
+| 3V3 | VCC | alimentación del sensor |
+| GPIO15 | DATA | con pull-up externo de 4,7 kΩ–10 kΩ a 3V3 (salvo que tu módulo ya lo traiga) |
+| GND | GND | tierra común |
+
+Reglas:
+
+- El DHT22 exige ≥ 2 s entre lecturas: el firmware cachea y relee como máximo cada 10 s; los handlers HTTP solo sirven el caché para no bloquear el servidor.
+- Sin lectura válida aún (sensor tibio o fallando), `sensors` responde `valid: false` con valores nulos y `age_s` nulo.
 
 ## Secretos por NVS (nunca en el repo)
 
@@ -107,10 +122,11 @@ firmware/esp32/
   partitions.csv        factory + ota_0 + ota_1 + NVS + LittleFS (flash 8 MB)
   src/main.cpp          arranque: Serial, fail-safe, WiFi, rutas, OTA
   src/hal/relays.h      relés reales en GPIO4/5 (active-low, fail-safe)
+  src/sensors/dht22.h   DHT22 en GPIO15 (lectura cacheada + modo SENSOR_FAKE)
   src/net/wifi_nvs.h    WiFi STA desde NVS + reconexión
   src/api/web_routes.h  contrato HTTP + JSON de estado
 ```
 
 ## Roadmap (de `docs/aprendizaje/02-integrando-el-esp32.md`)
 
-Hecho en este slice: GPIO real de relés. Siguiente, en orden: sensor, watchdog + fail-safe completo, OTA funcional verificada, MQTT (n8n nunca publica directo a la placa), e2e NestJS → placa y endurecimiento.
+Hecho: GPIO real de relés y sensor DHT22. Siguiente, en orden: watchdog + fail-safe completo, OTA funcional verificada, MQTT (n8n nunca publica directo a la placa), e2e NestJS → placa y endurecimiento.

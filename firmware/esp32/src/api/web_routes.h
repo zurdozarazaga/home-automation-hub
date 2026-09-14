@@ -18,6 +18,7 @@
 #include <WiFi.h>
 
 #include "hal/relays.h"
+#include "sensors/dht22.h"
 
 namespace api::routes {
 
@@ -45,6 +46,23 @@ inline void registerRoutes(WebServer& server) {
     JsonObject relays = doc["relays"].to<JsonObject>();
     relays["riego"] = hal::relays::riegoState();
     relays["luces"] = hal::relays::lucesState();
+    JsonObject sensors = doc["sensors"].to<JsonObject>();
+    // Backend telemetry contract (telemetry/dto/ingest-telemetry.dto.ts)
+    // ingests metric readings {ts, metric, value, unit?, source?}. The
+    // future forwarder maps this snapshot as:
+    //   temperature_c -> {metric: "temperature", unit: "celsius", source: "dht22"}
+    //   humidity_pct  -> {metric: "humidity", unit: "percent", source: "dht22"}
+    // No clock on the board: freshness travels as age_s, backend stamps ts.
+    if (sensors::dht22::hasReading()) {
+      sensors["temperature_c"] = sensors::dht22::temperatureC();
+      sensors["humidity_pct"] = sensors::dht22::humidityPct();
+      sensors["age_s"] = sensors::dht22::readingAgeMs() / 1000;
+    } else {
+      sensors["temperature_c"] = nullptr;
+      sensors["humidity_pct"] = nullptr;
+      sensors["age_s"] = nullptr;
+    }
+    sensors["valid"] = sensors::dht22::hasReading();
     sendJson(server, doc);
   });
 
