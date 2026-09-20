@@ -89,6 +89,16 @@ Reglas:
 - El DHT22 exige ≥ 2 s entre lecturas: el firmware cachea y relee como máximo cada 10 s; los handlers HTTP solo sirven el caché para no bloquear el servidor.
 - Sin lectura válida aún (sensor tibio o fallando), `sensors` responde `valid: false` con valores nulos y `age_s` nulo.
 
+## Watchdog (recuperación automática)
+
+- El firmware suscribe el loop principal al Task Watchdog del ESP32 con timeout de **10 s** y `panic + reset`: un cuelgue real reinicia la placa en vez de dejarla muda.
+- Por qué 10 s: una iteración sana tarda ~100 ms (HTTP + WiFi + lectura cacheada del sensor), así que 10 s es ~100 veces el período normal — margen de sobra para no dispararse en operación sana y aún así reaccionar antes de que una persona note el cuelgue.
+- Ventana de gracia de arranque (30 s): el bring-up de WiFi puede bloquear hasta sus propios 10 s; al terminar `setup()` la ventana se ajusta a 10 s.
+- Durante un OTA la ventana se estira a 120 s y se alimenta por chunk subido: `Update.begin()` borra la partición completa y el servidor es síncrono, así que el loop queda bloqueado a propósito. Una transferencia estancada más allá de la ventana igual termina en reset (seguro: la imagen incompleta nunca se bootea).
+- No se vigilan las tareas idle a propósito: las escrituras de flash del OTA pausan ambos cores y una suscripción idle dispararía en falso.
+- Recuperación sin intervención humana: cuelgue → panic → reset → boot → fail-safe (relés OFF) → WiFi → servidor.
+- Verificación en placa: `GET /health` expone `"reset_reason"` (por ejemplo `"POWERON"`, `"SW"` o `"TASK_WDT"`).
+
 ## Secretos por NVS (nunca en el repo)
 
 Las credenciales WiFi viven en NVS (espacio `wifi`, claves `ssid` y `pass`). Está prohibido quemarlas con `-D` o constantes en el código. Para grabarlas una vez por USB, flashea un sketch temporal como este y luego vuelve a flashear el firmware normal:
@@ -123,6 +133,7 @@ firmware/esp32/
   src/main.cpp          arranque: Serial, fail-safe, WiFi, rutas, OTA
   src/hal/relays.h      relés reales en GPIO4/5 (active-low, fail-safe)
   src/sensors/dht22.h   DHT22 en GPIO15 (lectura cacheada + modo SENSOR_FAKE)
+  src/sys/watchdog.h    Task Watchdog + reset reason (gracia de boot y OTA)
   src/net/wifi_nvs.h    WiFi STA desde NVS + reconexión
   src/api/web_routes.h  contrato HTTP + JSON de estado
 ```

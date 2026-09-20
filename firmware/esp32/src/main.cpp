@@ -1,15 +1,16 @@
 // main.cpp - Home Automation Hub firmware.
 //
 // Boots an ESP32-S3 DevKitC-1 with: Serial hello, fail-safe relay state,
-// DHT22 ambient sensing (cached reads), WiFi from NVS credentials,
-// GET /health, GET /estado (relays + sensors), and POST /riego + /luces
-// driving real GPIO.
+// task watchdog, DHT22 ambient sensing (cached reads), WiFi from NVS
+// credentials, GET /health, GET /estado (relays + sensors), and POST
+// /riego + /luces driving real GPIO.
 //
 // Layering (header-only on purpose, kept migration-friendly to ESP-IDF):
 //   hal/ -> physical outputs (safe state first)
 //   sensors/ -> physical inputs (cached reads, never block the server)
 //   net/  -> WiFi + NVS credentials + reconnect
 //   api/  -> HTTP contract consumed by the NestJS backend
+//   sys/  -> watchdog, reset diagnostics, OTA image confirmation
 
 #include <Arduino.h>
 #include <ElegantOTA.h>
@@ -19,6 +20,7 @@
 #include "hal/relays.h"
 #include "net/wifi_nvs.h"
 #include "sensors/dht22.h"
+#include "sys/watchdog.h"
 
 namespace {
 constexpr unsigned long kSerialBaud = 115200;
@@ -38,6 +40,11 @@ void setup() {
   // Fail-safe first: relays to safe state before anything else runs.
   hal::relays::applySafeState();
 
+  // Watchdog with a boot grace window: the WiFi bring-up below may block up
+  // to its own 10 s connect timeout, and setup() tightens the window at the
+  // end (rationale in sys/watchdog.h).
+  sys::watchdog::begin();
+
   // Sensor init is hardware-only (no network), so it runs before WiFi.
   sensors::dht22::begin();
 
@@ -48,6 +55,9 @@ void setup() {
   api::routes::registerRoutes(server);
   ElegantOTA.begin(&server);
   server.begin();
+
+  // Boot phase finished: tighten the watchdog to its normal 10 s window.
+  sys::watchdog::useNormalTimeout();
   Serial.printf("[hub][api] HTTP listening on port %u\n", kHttpPort);
 }
 
@@ -56,5 +66,6 @@ void loop() {
   ElegantOTA.loop();
   net::wifi::maintain();
   sensors::dht22::update();
+  sys::watchdog::kick();  // All work for this iteration is done: feed.
   delay(100);
 }

@@ -19,6 +19,7 @@
 
 #include "hal/relays.h"
 #include "sensors/dht22.h"
+#include "sys/watchdog.h"
 
 namespace api::routes {
 
@@ -32,6 +33,9 @@ inline void registerRoutes(WebServer& server) {
   server.on("/health", HTTP_GET, [&server]() {
     JsonDocument doc;
     doc["status"] = "ok";
+    // reset_reason lets a real board prove a watchdog reset happened
+    // ("TASK_WDT" after POST /debug/hang in DEBUG_HANG builds).
+    doc["reset_reason"] = sys::watchdog::resetReasonName();
     doc["uptime_s"] = millis() / 1000;
     doc["free_heap"] = ESP.getFreeHeap();
     sendJson(server, doc);
@@ -86,6 +90,19 @@ inline void registerRoutes(WebServer& server) {
   server.on("/riego/off", HTTP_POST, relayStub("riego", false));
   server.on("/luces/on", HTTP_POST, relayStub("luces", true));
   server.on("/luces/off", HTTP_POST, relayStub("luces", false));
+
+#ifdef DEBUG_HANG
+  // DEBUG_HANG builds only: block the loop on demand to verify on hardware
+  // that the task watchdog panics and resets the board (see firmware/README.md).
+  server.on("/debug/hang", HTTP_POST, [&server]() {
+    JsonDocument doc;
+    doc["ok"] = true;
+    doc["note"] = "loop blocked on purpose, task watchdog should reset the board";
+    sendJson(server, doc);
+    Serial.println("[hub][debug] hang requested, expecting a watchdog reset");
+    sys::watchdog::hangForever();
+  });
+#endif
 
   server.onNotFound([&server]() {
     JsonDocument doc;
