@@ -19,6 +19,7 @@
 
 #include "hal/relays.h"
 #include "sensors/dht22.h"
+#include "sys/build_info.h"
 #include "sys/watchdog.h"
 
 namespace api::routes {
@@ -33,9 +34,11 @@ inline void registerRoutes(WebServer& server) {
   server.on("/health", HTTP_GET, [&server]() {
     JsonDocument doc;
     doc["status"] = "ok";
-    // reset_reason lets a real board prove a watchdog reset happened
-    // ("TASK_WDT" after POST /debug/hang in DEBUG_HANG builds).
+    // fw + reset_reason make an OTA update and a watchdog reset verifiable
+    // over HTTP ("fw" changes after an update; "TASK_WDT" after /debug/hang).
+    doc["fw"] = sys::build_info::version();
     doc["reset_reason"] = sys::watchdog::resetReasonName();
+    doc["ota_enabled"] = sys::build_info::otaEnabled();
     doc["uptime_s"] = millis() / 1000;
     doc["free_heap"] = ESP.getFreeHeap();
     sendJson(server, doc);

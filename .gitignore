@@ -44,6 +44,11 @@ Thumbs.db
 # Certificates and keys
 *.pem
 
+# Firmware: local overrides and generated sdkconfig (OTA credentials — never commit)
+firmware/esp32/platformio_override.ini
+firmware/esp32/sdkconfig
+firmware/esp32/sdkconfig.*
+
 # PlatformIO (firmware/esp32)
 .pio/
 .piolibdeps/
