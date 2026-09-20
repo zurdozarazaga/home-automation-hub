@@ -19,6 +19,8 @@
 
 #include "hal/relays.h"
 #include "sensors/dht22.h"
+#include "sys/build_info.h"
+#include "sys/watchdog.h"
 
 namespace api::routes {
 
@@ -32,6 +34,11 @@ inline void registerRoutes(WebServer& server) {
   server.on("/health", HTTP_GET, [&server]() {
     JsonDocument doc;
     doc["status"] = "ok";
+    // fw + reset_reason make an OTA update and a watchdog reset verifiable
+    // over HTTP ("fw" changes after an update; "TASK_WDT" after /debug/hang).
+    doc["fw"] = sys::build_info::version();
+    doc["reset_reason"] = sys::watchdog::resetReasonName();
+    doc["ota_enabled"] = sys::build_info::otaEnabled();
     doc["uptime_s"] = millis() / 1000;
     doc["free_heap"] = ESP.getFreeHeap();
     sendJson(server, doc);
@@ -86,6 +93,19 @@ inline void registerRoutes(WebServer& server) {
   server.on("/riego/off", HTTP_POST, relayStub("riego", false));
   server.on("/luces/on", HTTP_POST, relayStub("luces", true));
   server.on("/luces/off", HTTP_POST, relayStub("luces", false));
+
+#ifdef DEBUG_HANG
+  // DEBUG_HANG builds only: block the loop on demand to verify on hardware
+  // that the task watchdog panics and resets the board (see firmware/README.md).
+  server.on("/debug/hang", HTTP_POST, [&server]() {
+    JsonDocument doc;
+    doc["ok"] = true;
+    doc["note"] = "loop blocked on purpose, task watchdog should reset the board";
+    sendJson(server, doc);
+    Serial.println("[hub][debug] hang requested, expecting a watchdog reset");
+    sys::watchdog::hangForever();
+  });
+#endif
 
   server.onNotFound([&server]() {
     JsonDocument doc;
