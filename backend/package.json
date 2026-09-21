@@ -8,6 +8,7 @@
   "scripts": {
     "auth:issue-service": "ts-node src/auth/scripts/issue-service-token.ts",
     "auth:issue-token": "ts-node src/auth/scripts/issue-token.ts",
+    "devices:register": "ts-node src/devices/scripts/register-device.ts",
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
