@@ -8,7 +8,7 @@ import { DEVICE_REPOSITORY } from './constants/device-repository.token';
 import { CreateDeviceDto } from './dto/create-device.dto';
 import { UpdateDeviceDto } from './dto/update-device.dto';
 import type { DeviceRepository } from './interfaces/device-repository.interface';
-import type { Device } from './interfaces/device.interface';
+import type { Device, DeviceStatus } from './interfaces/device.interface';
 
 @Injectable()
 export class DevicesService {
@@ -85,6 +85,18 @@ export class DevicesService {
   async remove(id: string): Promise<void> {
     const deleted = await this.deviceRepository.delete(id);
     if (!deleted) {
+      throw new NotFoundException(`Device ${id} not found`);
+    }
+  }
+
+  /**
+   * Status-only write for the monitoring poller, avoiding the uniqueness
+   * checks of a full update.
+   */
+  async updateStatus(id: string, status: DeviceStatus): Promise<void> {
+    const updatedDevice = await this.deviceRepository.update(id, { status });
+
+    if (!updatedDevice) {
       throw new NotFoundException(`Device ${id} not found`);
     }
   }
