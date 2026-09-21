@@ -31,6 +31,12 @@ services:
       PORT: 3001
       DATA_SOURCE: ${DATA_SOURCE:-in-memory}
       DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/home_automation_hub}
+      # Local-only defaults: set real values in the root .env for shared environments.
+      JWT_SECRET: ${JWT_SECRET:-local-dev-jwt-secret}
+      AUTH_USERNAME: ${AUTH_USERNAME:-admin}
+      AUTH_PASSWORD: ${AUTH_PASSWORD:-admin}
+      DEVICE_POLL_INTERVAL_MS: ${DEVICE_POLL_INTERVAL_MS:-30000}
+      ESP32_HTTP_TIMEOUT_MS: ${ESP32_HTTP_TIMEOUT_MS:-5000}
     ports:
       - "3001:3001"
     volumes:
