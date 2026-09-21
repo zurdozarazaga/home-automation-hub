@@ -1,3 +1,5 @@
+import { LogoutButton } from "@/components/dashboard/logout-button";
+
 type DashboardHeaderProps = Readonly<{
   location: string;
   temperature: string;
@@ -28,8 +30,11 @@ export function DashboardHeader({
             </span>
           </div>
         </div>
-        <div className="rounded-full border border-cyan-400/25 bg-cyan-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.3em] text-cyan-200">
-          Dark mode
+        <div className="flex shrink-0 flex-col items-end gap-2">
+          <span className="rounded-full border border-cyan-400/25 bg-cyan-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.3em] text-cyan-200">
+            Dark mode
+          </span>
+          <LogoutButton />
         </div>
       </div>
     </header>
