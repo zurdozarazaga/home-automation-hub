@@ -48,6 +48,20 @@ cp .env.example .env
 | `JWT_SECRET` | `local-dev-jwt-secret` | Signs and validates every JWT (login, CLI tokens, n8n). All issuers/verifiers must share it; prod MUST set a real random value |
 | `DEVICE_POLL_INTERVAL_MS` | `30000` | Device status/telemetry poller interval in ms; `<= 0` disables it |
 | `ESP32_HTTP_TIMEOUT_MS` | `5000` | Timeout for backend -> ESP32 HTTP calls (commands and `GET /estado`) |
+| `API_BASE_URL` | `http://backend:3001` | Server-side frontend -> backend base URL. Host-run dev uses `http://localhost:3001` |
+
+### Frontend -> backend URL (host vs container)
+
+The frontend reads `API_BASE_URL` on the server; the browser only calls
+same-origin `/api/*` route handlers, so no `NEXT_PUBLIC_*` variable is
+needed anymore.
+
+- Inside docker compose: `http://backend:3001` (the compose service name).
+  `http://localhost:3001` does **not** resolve inside the frontend container.
+- Running `npm run dev` in `frontend/` on the host: `http://localhost:3001`.
+
+`NEXT_PUBLIC_API_BASE_URL` is still read as a deprecated fallback for the
+prod image, which injects it at runtime.
 | `NEXT_PUBLIC_API_BASE_URL` | `http://localhost:3001` | Frontend -> backend base URL |
 
 ## Prisma mode (real database + board)

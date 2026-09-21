@@ -55,7 +55,9 @@ services:
     command: sh -c "npm install && npm run dev -- --hostname 0.0.0.0 --port 3000"
     restart: unless-stopped
     environment:
-      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:3001}
+      # Server-side only: the browser calls same-origin /api/* route handlers.
+      # Inside the compose network the backend is reachable as backend:3001.
+      API_BASE_URL: ${API_BASE_URL:-http://backend:3001}
     ports:
       - "3000:3000"
     volumes:
