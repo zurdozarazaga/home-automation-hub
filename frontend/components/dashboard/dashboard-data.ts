@@ -18,26 +18,42 @@ export type DashboardDevice = Readonly<{
   ipAddress: string;
 }>;
 
+export type DashboardSensors = Readonly<{
+  deviceName?: string;
+  /** Formatted latest reading, e.g. "22.8 °C"; null when there is no data. */
+  temperature: string | null;
+  /** Formatted latest reading, e.g. "48.5 %"; null when there is no data. */
+  humidity: string | null;
+}>;
+
 export type DashboardData = Readonly<{
   location: string;
   temperature: string;
   forecast: string;
-  sensorTemperature: string;
   irrigationSchedule: string;
   irrigationStatus: string;
+  sensors: DashboardSensors;
   zones: readonly DashboardZone[];
   devices: readonly DashboardDevice[];
   activity: readonly Readonly<{ time: string; label: string }>[];
   places: readonly string[];
 }>;
 
+/**
+ * Static copy for data the backend does not expose yet: weather placeholders
+ * (header), irrigation automation, activity feed and places. Devices, zones
+ * and sensors always come from the API.
+ */
 export const dashboardDataMock: DashboardData = {
   location: "Buenos Aires",
   temperature: "26°C",
   forecast: "No rain expected",
-  sensorTemperature: "27°C",
   irrigationSchedule: "07:00",
   irrigationStatus: "Activo",
+  sensors: {
+    temperature: null,
+    humidity: null,
+  },
   zones: [
     {
       icon: "🌱",
@@ -46,7 +62,6 @@ export const dashboardDataMock: DashboardData = {
       statusTone: "text-rose-200 bg-rose-500/15 border-rose-500/20",
       accent: "from-emerald-400/35 via-cyan-400/10 to-transparent",
       actionTarget: "riego",
-      deviceId: "mock-device-riego",
     },
     {
       icon: "💡",
@@ -55,27 +70,9 @@ export const dashboardDataMock: DashboardData = {
       statusTone: "text-emerald-200 bg-emerald-500/15 border-emerald-500/20",
       accent: "from-amber-300/35 via-orange-300/10 to-transparent",
       actionTarget: "luces",
-      deviceId: "mock-device-luces",
     },
   ],
-  devices: [
-    {
-      id: "mock-device-riego",
-      name: "ESP32 Riego",
-      state: "Online",
-      tone: "text-emerald-300",
-      statusLabel: "Online 🟢",
-      ipAddress: "192.168.0.50:80",
-    },
-    {
-      id: "mock-device-luces",
-      name: "ESP32 Luces",
-      state: "Online",
-      tone: "text-emerald-300",
-      statusLabel: "Online 🟢",
-      ipAddress: "192.168.0.51:80",
-    },
-  ],
+  devices: [],
   activity: [
     { time: "19:00", label: "Riego ON" },
     { time: "19:20", label: "Riego OFF" },
