@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
+import { mapActionError } from "@/components/dashboard/action-error";
 
 type ZoneControlCardProps = Readonly<{
   icon: string;
@@ -27,6 +29,7 @@ export function ZoneControlCard({
   const [currentStatus, setCurrentStatus] = useState(status);
   const [currentStatusTone, setCurrentStatusTone] = useState(statusTone);
   const [message, setMessage] = useState<string | null>(null);
+  const [sessionExpired, setSessionExpired] = useState(false);
   const [isSending, setIsSending] = useState(false);
 
   const nextTone = (nextStatus: string): string =>
@@ -47,6 +50,7 @@ export function ZoneControlCard({
     setCurrentStatus(optimisticStatus);
     setCurrentStatusTone(nextTone(optimisticStatus));
     setIsSending(true);
+    setSessionExpired(false);
     setMessage(action === "turn_on" ? "Enviando encendido..." : "Enviando apagado...");
 
     try {
@@ -58,14 +62,12 @@ export function ZoneControlCard({
         body: JSON.stringify({ action, target: actionTarget }),
       });
 
-      const payload = (await response.json().catch(() => null)) as
-        | { result?: string; message?: string }
-        | null;
-
       if (!response.ok) {
+        const error = mapActionError(response.status);
         setCurrentStatus(previousStatus);
         setCurrentStatusTone(previousTone);
-        setMessage(payload?.message ?? "No se pudo ejecutar la acción");
+        setMessage(error.message);
+        setSessionExpired(error.sessionExpired);
         return;
       }
 
@@ -122,7 +124,17 @@ export function ZoneControlCard({
             Apagar
           </button>
         </div>
-        <p className="text-xs text-white/55">{message ?? `Target ${actionTarget}`}</p>
+        <p className="text-xs text-white/55">
+          {message ?? `Target ${actionTarget}`}
+          {sessionExpired ? (
+            <Link
+              href="/login"
+              className="ml-2 font-semibold text-cyan-200 underline underline-offset-2"
+            >
+              Ir a /login
+            </Link>
+          ) : null}
+        </p>
       </div>
     </article>
   );
