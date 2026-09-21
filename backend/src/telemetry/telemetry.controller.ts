@@ -7,6 +7,7 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
+import { Roles } from '../auth/decorators/roles.decorator';
 import { IngestTelemetryDto } from './dto/ingest-telemetry.dto';
 import { QueryTelemetryDto } from './dto/query-telemetry.dto';
 import {
@@ -20,6 +21,7 @@ export class TelemetryController {
   constructor(private readonly telemetryService: TelemetryService) {}
 
   @Post('batch')
+  @Roles('service')
   async ingestBatch(
     @Param('deviceId', ParseUUIDPipe) deviceId: string,
     @Body() ingestTelemetryDto: IngestTelemetryDto,
@@ -28,6 +30,7 @@ export class TelemetryController {
   }
 
   @Get()
+  @Roles('admin', 'viewer')
   async query(
     @Param('deviceId', ParseUUIDPipe) deviceId: string,
     @Query() queryTelemetryDto: QueryTelemetryDto,

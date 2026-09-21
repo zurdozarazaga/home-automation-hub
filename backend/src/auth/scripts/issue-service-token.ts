@@ -1,36 +1,28 @@
-import { JwtService } from '@nestjs/jwt';
-import type { JwtPayload } from '../interfaces/jwt-payload.interface';
+import {
+  SERVICE_TOKEN_SUB,
+  SERVICE_TOKEN_TTL,
+  issueServiceToken,
+} from './issue-token';
 
-export const SERVICE_TOKEN_SUB = 'n8n-sistema-riego';
-export const SERVICE_TOKEN_TTL = '24h';
+export { SERVICE_TOKEN_SUB, SERVICE_TOKEN_TTL, issueServiceToken };
 
 /**
- * Offline service-JWT issuance for the n8n trigger account.
- * No HTTP endpoint exists on purpose (bootstrapping risk); rotation means
- * re-issuing via `npm run auth:issue-service` and updating the n8n
- * credential. Full invalidation via JWT_SECRET rotation.
+ * Backwards-compatible entry point for the n8n service token.
+ *
+ * Docs and the n8n credential reference `npm run auth:issue-service`; new
+ * issuance should use `npm run auth:issue-token -- --role <role>`.
+ *
+ * Usage: npm run auth:issue-service -- [subject]
  */
-export async function issueServiceToken(
-  secret: string,
-  sub: string = SERVICE_TOKEN_SUB,
-): Promise<string> {
-  const jwtService = new JwtService({
-    secret,
-    signOptions: { expiresIn: SERVICE_TOKEN_TTL },
-  });
-  const payload: Pick<JwtPayload, 'sub' | 'role'> = { sub, role: 'service' };
-  return jwtService.signAsync(payload);
-}
-
 async function main(): Promise<void> {
   const secret = process.env.JWT_SECRET;
   if (!secret) {
     console.error('JWT_SECRET is not set. Refusing to issue a token.');
     process.exit(1);
   }
-  const sub = process.argv[2] ?? SERVICE_TOKEN_SUB;
-  const token = await issueServiceToken(secret, sub);
-  console.log(token);
+
+  const sub = process.argv[2];
+  console.log(await issueServiceToken(secret, sub));
 }
 
 if (require.main === module) {

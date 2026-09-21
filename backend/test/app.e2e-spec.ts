@@ -11,6 +11,12 @@ describe('AppController (e2e)', () => {
   let fetchSpy: jest.SpiedFunction<typeof fetch>;
   let adminToken: string;
 
+  // Unique per run so the suite stays re-runnable against a persistent
+  // Postgres (device name and (ip, port) are unique constraints).
+  const uniqueSuffix = (): string => Math.random().toString(36).slice(2, 10);
+  const uniqueIp = (): string =>
+    `192.168.${Math.floor(Math.random() * 250) + 1}.${Math.floor(Math.random() * 250) + 1}`;
+
   const buildFetchResponse = (statusCode: number): Response => {
     return new Response(
       JSON.stringify({ ok: statusCode >= 200 && statusCode < 300 }),
@@ -74,13 +80,14 @@ describe('AppController (e2e)', () => {
   });
 
   it('/devices (POST + GET)', async () => {
+    const deviceName = `Riego Patio ${uniqueSuffix()}`;
     const createResponse = await request(app.getHttpServer())
       .post('/devices')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
-        name: 'Riego Patio',
+        name: deviceName,
         description: 'Nodo de riego principal',
-        ipAddress: '192.168.1.90',
+        ipAddress: uniqueIp(),
         port: 80,
       });
 
@@ -92,7 +99,7 @@ describe('AppController (e2e)', () => {
       status: string;
     };
     expect(createdDevice.id).toBeDefined();
-    expect(createdDevice.name).toBe('Riego Patio');
+    expect(createdDevice.name).toBe(deviceName);
     expect(createdDevice.status).toBe('offline');
 
     const listResponse = await request(app.getHttpServer())
@@ -134,9 +141,9 @@ describe('AppController (e2e)', () => {
       .post('/devices')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
-        name: 'Luces Terraza',
+        name: `Luces Terraza ${uniqueSuffix()}`,
         description: 'Nodo de luces terraza',
-        ipAddress: '192.168.1.91',
+        ipAddress: uniqueIp(),
         port: 80,
       });
 
@@ -169,9 +176,9 @@ describe('AppController (e2e)', () => {
       .post('/devices')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
-        name: 'Bomba Jardin',
+        name: `Bomba Jardin ${uniqueSuffix()}`,
         description: 'Nodo de bomba',
-        ipAddress: '192.168.1.92',
+        ipAddress: uniqueIp(),
         port: 80,
       });
 

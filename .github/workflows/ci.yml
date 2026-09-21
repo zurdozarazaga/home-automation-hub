@@ -13,6 +13,20 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: home_automation_hub
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d home_automation_hub"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -32,6 +46,18 @@ jobs:
 
       - name: Test
         run: npm test -- --runInBand
+
+      - name: Apply database migrations
+        run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/home_automation_hub
+
+      - name: E2E tests (Prisma datasource)
+        run: npm run test:e2e
+        env:
+          DATA_SOURCE: prisma
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/home_automation_hub
+          AUTH_PASSWORD: ci-pass
 
       - name: Build
         run: npm run build

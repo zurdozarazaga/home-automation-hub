@@ -31,6 +31,12 @@ services:
       PORT: 3001
       DATA_SOURCE: ${DATA_SOURCE:-in-memory}
       DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/home_automation_hub}
+      # Local-only defaults: set real values in the root .env for shared environments.
+      JWT_SECRET: ${JWT_SECRET:-local-dev-jwt-secret}
+      AUTH_USERNAME: ${AUTH_USERNAME:-admin}
+      AUTH_PASSWORD: ${AUTH_PASSWORD:-admin}
+      DEVICE_POLL_INTERVAL_MS: ${DEVICE_POLL_INTERVAL_MS:-30000}
+      ESP32_HTTP_TIMEOUT_MS: ${ESP32_HTTP_TIMEOUT_MS:-5000}
     ports:
       - "3001:3001"
     volumes:
@@ -49,7 +55,9 @@ services:
     command: sh -c "npm install && npm run dev -- --hostname 0.0.0.0 --port 3000"
     restart: unless-stopped
     environment:
-      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:3001}
+      # Server-side only: the browser calls same-origin /api/* route handlers.
+      # Inside the compose network the backend is reachable as backend:3001.
+      API_BASE_URL: ${API_BASE_URL:-http://backend:3001}
     ports:
       - "3000:3000"
     volumes:

@@ -17,6 +17,13 @@ export function DeviceList({
           <p className="text-sm font-medium text-white/70">
             No hay dispositivos registrados en el backend.
           </p>
+          <p className="mt-2 text-xs text-white/45">
+            Registrá la placa con{" "}
+            <code className="rounded-lg bg-black/40 px-2 py-1 font-mono text-[11px] text-cyan-200">
+              npm run devices:register
+            </code>{" "}
+            y volvé a cargar el dashboard.
+          </p>
         </article>
       ) : null}
       {devices.map((device) => (

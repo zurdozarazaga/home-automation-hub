@@ -1,5 +1,8 @@
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { ActivityFeed } from "@/components/dashboard/activity-feed";
 import { AutomationCard } from "@/components/dashboard/automation-card";
+import { BackendOfflineCard } from "@/components/dashboard/backend-offline-card";
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { DashboardSection } from "@/components/dashboard/dashboard-section";
 import { DeviceList } from "@/components/dashboard/device-list";
@@ -7,9 +10,26 @@ import { FutureReadyPanel } from "@/components/dashboard/future-ready-panel";
 import { SensorCard } from "@/components/dashboard/sensor-card";
 import { ZoneControlCard } from "@/components/dashboard/zone-control-card";
 import { getDashboardData } from "@/lib/dashboard-api";
+import { SESSION_COOKIE } from "@/lib/session";
 
 export default async function Home() {
-  const dashboardData = await getDashboardData();
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
+
+  if (!token) {
+    redirect("/login");
+  }
+
+  const result = await getDashboardData(token);
+
+  if (result.status === "unauthorized") {
+    redirect("/login");
+  }
+
+  if (result.status === "disconnected") {
+    return <BackendOfflineCard />;
+  }
+
+  const dashboardData = result.data;
 
   return (
     <main className="min-h-screen px-4 py-4 text-white sm:px-6 sm:py-6 lg:px-8">
@@ -37,11 +57,7 @@ export default async function Home() {
 
           <div className="grid gap-4 sm:gap-5">
             <DashboardSection eyebrow="Sensores" title="Clima y lectura">
-              <SensorCard
-                label="Temperatura"
-                value={dashboardData.sensorTemperature}
-                badge="Sensor Card"
-              />
+              <SensorCard sensors={dashboardData.sensors} />
             </DashboardSection>
 
             <DashboardSection eyebrow="Automatizaciones" title="Riego Automático">

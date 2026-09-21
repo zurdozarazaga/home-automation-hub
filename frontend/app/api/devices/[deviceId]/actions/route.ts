@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "http://localhost:3001";
+import { getApiBaseUrl } from "@/lib/api-base-url";
+import { SESSION_COOKIE } from "@/lib/session";
 
 type ActionRequestBody = Readonly<{
   action: "turn_on" | "turn_off";
@@ -16,10 +15,14 @@ export async function POST(
   try {
     const { deviceId } = await context.params;
     const body = (await request.json()) as ActionRequestBody;
-    const authorization = request.headers.get("authorization");
+    const cookieToken = request.cookies.get(SESSION_COOKIE)?.value;
+    // Cookie session first; keep forwarding an explicit incoming header.
+    const authorization = cookieToken
+      ? `Bearer ${cookieToken}`
+      : request.headers.get("authorization");
 
     const response = await fetch(
-      `${API_BASE_URL}/devices/${deviceId}/actions`,
+      `${getApiBaseUrl()}/devices/${deviceId}/actions`,
       {
         method: "POST",
         headers: {
