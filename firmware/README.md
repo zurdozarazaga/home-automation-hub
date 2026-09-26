@@ -1,6 +1,6 @@
 # Firmware ESP32-S3
 
-Firmware de la placa ESP32-S3 DevKitC-1 para el Home Automation Hub. Todo se verifica sin placa (compilación + CI); solo `upload`, `monitor` y las pruebas con hardware requieren la placa.
+Firmware de la placa **ESP32-S3-N16R8** (definición DevKitC-1; 16 MB de flash QIO + 8 MB de PSRAM OPI, con los overrides en `platformio.ini`) para el Home Automation Hub. Todo se verifica sin placa (compilación + CI); solo `upload`, `monitor` y las pruebas con hardware requieren la placa.
 
 ## Alcance de este slice
 
@@ -26,7 +26,7 @@ El backend mapea `POST /devices/:deviceId/actions {action, target}` a estas ruta
 ## Requisitos
 
 - VS Code con la extensión **pioarduino IDE** (es el fork comunitario; la extensión oficial de PlatformIO usa el platform oficial, estancado en Arduino Core 2.x, y no sirve para este proyecto).
-- Alternativa por CLI: Python 3.10+ y `pip install pioarduino`. Los comandos `pio` son los mismos.
+- Alternativa por CLI (la que usamos en este repo): Python 3.10+ y `pip install -U pioarduino`. En macOS con Homebrew: `brew install python@3.12` + `pipx install pioarduino`; el comando sigue siendo `pio`.
 - Sin hardware: basta con el CLI para compilar y con el CI de GitHub como verificación.
 
 ## Comandos
@@ -37,6 +37,7 @@ pio run -d firmware/esp32
 
 # Flashear por USB el env normal (requiere la placa)
 pio run -d firmware/esp32 -t upload
+# Si hay varios puertos serie, agregá -p /dev/cu.usbmodemXXXX (macOS)
 
 # Env de banco/CI: credenciales OTA de prueba, /debug/hang y SENSOR_FAKE
 pio run -d firmware/esp32 -e esp32-s3-devkitc-1-debug -t upload
@@ -150,19 +151,14 @@ build_flags =
 
 ## Secretos por NVS (nunca en el repo)
 
-Las credenciales WiFi viven en NVS (espacio `wifi`, claves `ssid` y `pass`). Está prohibido quemarlas con `-D` o constantes en el código. Para grabarlas una vez por USB, flashea un sketch temporal como este y luego vuelve a flashear el firmware normal:
+Las credenciales WiFi viven en NVS (espacio `wifi`, claves `ssid` y `pass`). Está prohibido quemarlas con `-D` o constantes en el código. Para grabarlas una vez por USB usa la herramienta `tools/wifi-provision` (las credenciales entran como variables de entorno de tu shell y no tocan el repo):
 
-```cpp
-#include <Preferences.h>
-void setup() {
-  Preferences prefs;
-  prefs.begin("wifi", false);
-  prefs.putString("ssid", "TU_RED");
-  prefs.putString("pass", "TU_CLAVE");
-  prefs.end();
-}
-void loop() {}
+```bash
+cd firmware/tools/wifi-provision
+WIFI_SSID='tu-red' WIFI_PASS='tu-clave' pio run -t upload
 ```
+
+Luego reflashea el firmware normal (`pio run -d firmware/esp32 -t upload`). El NVS no se borra al reflashear: solo un `-t erase` completo lo elimina.
 
 ## Qué verifica cada paso sin placa
 
@@ -178,7 +174,7 @@ void loop() {}
 ```text
 firmware/esp32/
   platformio.ini        envs esp32-s3-devkitc-1 y -debug (pioarduino, Arduino, LittleFS)
-  partitions.csv        factory + ota_0 + ota_1 + NVS + LittleFS (flash 8 MB)
+  partitions.csv        factory + ota_0 + ota_1 + NVS + LittleFS (layout 8 MB dentro de 16 MB)
   src/main.cpp          arranque: Serial, fail-safe, watchdog, WiFi, OTA, rutas
   src/hal/relays.h      relés reales en GPIO4/5 (active-low, fail-safe)
   src/sensors/dht22.h   DHT22 en GPIO15 (lectura cacheada + modo SENSOR_FAKE)
@@ -187,6 +183,9 @@ firmware/esp32/
   src/sys/ota_confirm.h confirmación de imagen post-OTA (rollback-ready)
   src/net/wifi_nvs.h    WiFi STA desde NVS + reconexión
   src/api/web_routes.h  contrato HTTP + JSON de estado
+
+firmware/tools/wifi-provision/
+  src/main.cpp          grabación one-shot de ssid/pass en NVS (env vars; sin secretos)
 ```
 
 ## Roadmap (de `docs/aprendizaje/02-integrando-el-esp32.md`)

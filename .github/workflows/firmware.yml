@@ -43,3 +43,6 @@ jobs:
 
       - name: Build (no board needed)
         run: pio run -d firmware/esp32
+
+      - name: Build WiFi provisioning tool (no board needed)
+        run: WIFI_SSID=ci WIFI_PASS=ci pio run -d firmware/tools/wifi-provision

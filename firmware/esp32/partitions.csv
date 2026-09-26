@@ -1,4 +1,4 @@
-# Home Automation Hub - OTA partition layout for ESP32-S3 (8 MB flash).
+# Home Automation Hub - OTA partition layout for ESP32-S3 (8 MB layout; fits the N16R8 16 MB flash).
 # OTA from day one: without correct partitions there is no remote update later.
 # Layout: factory + ota_0 + ota_1 app slots, NVS for credentials, LittleFS data.
 # Total: 0x800000 (8 MB). board_build.partitions points here from platformio.ini.
