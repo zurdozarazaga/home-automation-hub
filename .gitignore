@@ -55,3 +55,4 @@ firmware/esp32/sdkconfig.*
 .pioenvs/
 **/*.elf
 **/*.hex
+compile_commands.json
