@@ -78,6 +78,9 @@ inline void begin() {
   Serial.println("[hub][sensor] DHT22 FAKE mode: serving fixed 23.5 C / 55.0 %");
 #else
   driver().begin();
+  // Prime the interval so the first attempt runs on the next loop (the
+  // subtraction stays wraparound-safe with unsigned millis()).
+  cache().readAtMs = millis() - kReadIntervalMs;
   Serial.println("[hub][sensor] DHT22 on GPIO15");
 #endif
 }
@@ -88,18 +91,26 @@ inline void update() {
 #else
   Reading& current = cache();
   const unsigned long now = millis();
-  if (current.valid && now - current.readAtMs < kReadIntervalMs) {
-    return;  // Cache is fresh, nothing to do.
+  if (now - current.readAtMs < kReadIntervalMs) {
+    return;  // Last attempt is younger than the interval: serve the cache.
   }
-  // Stamp every attempt so a failing sensor retries at interval cadence
-  // instead of once per loop.
+  // Stamp every attempt so a failing sensor retries once per interval
+  // instead of once per loop, and log only the first failure of a run.
   current.readAtMs = now;
+  static bool failureLogged = false;
   const float humidity = driver().readHumidity();
   const float temperature = driver().readTemperature();
   if (isnan(humidity) || isnan(temperature)) {
-    Serial.println("[hub][sensor] DHT22 read failed, retrying on next interval");
+    if (!failureLogged) {
+      Serial.println("[hub][sensor] DHT22 read failed, retrying every 10 s (logged once)");
+      failureLogged = true;
+    }
+    // The HTTP contract reports nulls whenever there is no valid reading,
+    // and the backend poller only ingests valid snapshots.
+    current.valid = false;
     return;
   }
+  failureLogged = false;
   current.temperatureC = temperature;
   current.humidityPct = humidity;
   current.valid = true;
