@@ -40,15 +40,16 @@ inline void applyConfig(uint32_t timeoutMs) {
   config.timeout_ms = timeoutMs;
   config.idle_core_mask = 0;  // Watch the loop task, not the idle tasks.
   config.trigger_panic = true;
-  esp_err_t err = esp_task_wdt_init(&config);
+  // The Arduino core already initializes the TWDT at startup, so reconfigure
+  // first (init would only log "TWDT already initialized") and fall back to
+  // init on boards where the core did not bring it up.
+  esp_err_t err = esp_task_wdt_reconfigure(&config);
   if (err == ESP_ERR_INVALID_STATE) {
-    err = esp_task_wdt_reconfigure(&config);
+    err = esp_task_wdt_init(&config);
   }
   if (err != ESP_OK) {
     Serial.printf("[hub][sys] watchdog config failed: %d\n", (int)err);
-    return;
   }
-  esp_task_wdt_reset();
 }
 
 }  // namespace detail
@@ -59,6 +60,7 @@ inline void begin() {
   if (err != ESP_OK) {
     Serial.printf("[hub][sys] watchdog subscribe returned %d\n", (int)err);
   }
+  esp_task_wdt_reset();  // Start the countdown only now that we are watched.
   Serial.printf("[hub][sys] task watchdog armed (%u ms boot grace, panic+reset)\n",
                 kBootGraceMs);
 }
@@ -66,10 +68,14 @@ inline void begin() {
 // Feeds the watchdog; called once per loop iteration after all work.
 inline void kick() { esp_task_wdt_reset(); }
 
-inline void useNormalTimeout() { detail::applyConfig(kTimeoutMs); }
+inline void useNormalTimeout() {
+  detail::applyConfig(kTimeoutMs);
+  esp_task_wdt_reset();
+}
 
 inline void useOtaTimeout() {
   detail::applyConfig(kOtaTimeoutMs);
+  esp_task_wdt_reset();
   Serial.printf("[hub][sys] watchdog stretched to %u ms for OTA\n", kOtaTimeoutMs);
 }
 

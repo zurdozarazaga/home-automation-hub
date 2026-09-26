@@ -16,10 +16,22 @@ constexpr unsigned long kConnectTimeoutMs = 10000;
 constexpr unsigned long kReconnectIntervalMs = 10000;
 }  // namespace
 
+// True once credentials were found and a connection attempt started: the
+// reconnect loop stays quiet on boards that were never provisioned.
+inline bool provisioned = false;
+
 // Reads credentials from NVS and joins the network. Returns true when the
 // station is connected; false otherwise (boot continues, HTTP just stays
 // unreachable until the board is provisioned or the network returns).
 inline bool connectFromNvs() {
+  // Bring the WiFi/lwIP stack up even without credentials: the HTTP server
+  // binds during boot and lwIP is not initialized until the stack starts
+  // (Arduino core 3.x), so binding without this crashes. Without credentials
+  // the board simply stays unreachable until it is provisioned.
+  WiFi.mode(WIFI_STA);
+  WiFi.setAutoReconnect(true);
+  WiFi.persistent(true);
+
   Preferences prefs;
   if (!prefs.begin("wifi", /*readOnly=*/true)) {
     Serial.println("[hub][net] NVS namespace 'wifi' not found, skipping WiFi");
@@ -34,9 +46,7 @@ inline bool connectFromNvs() {
     return false;
   }
 
-  WiFi.mode(WIFI_STA);
-  WiFi.setAutoReconnect(true);
-  WiFi.persistent(true);
+  provisioned = true;
   WiFi.begin(ssid.c_str(), pass.c_str());
 
   Serial.printf("[hub][net] connecting to SSID '%s'...\n", ssid.c_str());
@@ -59,7 +69,7 @@ inline bool connectFromNvs() {
 // Keeps the station alive; throttled so a missing network never spins the loop.
 inline void maintain() {
   static unsigned long lastAttempt = 0;
-  if (WiFi.status() == WL_CONNECTED) {
+  if (!provisioned || WiFi.status() == WL_CONNECTED) {
     return;
   }
   const unsigned long now = millis();

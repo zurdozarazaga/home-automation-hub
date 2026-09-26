@@ -18,6 +18,7 @@
 // the OFF level before enabling the drivers so boot never pulses a relay.
 
 #include <Arduino.h>
+#include <driver/gpio.h>
 
 namespace hal::relays {
 
@@ -56,8 +57,11 @@ constexpr uint8_t levelFor(bool on) {
 
 inline void applySafeState() {
   // Glitch-free order: latch OFF first, then enable the output drivers.
-  digitalWrite(kRiegoPin, levelFor(false));
-  digitalWrite(kLucesPin, levelFor(false));
+  // digitalWrite() before pinMode() is ignored (with an error log) on Arduino
+  // core 3.x, so set the output register through the IDF API instead: the pad
+  // drives the OFF level from the instant it becomes an output.
+  gpio_set_level(static_cast<gpio_num_t>(kRiegoPin), levelFor(false));
+  gpio_set_level(static_cast<gpio_num_t>(kLucesPin), levelFor(false));
   pinMode(kRiegoPin, OUTPUT);
   pinMode(kLucesPin, OUTPUT);
   Serial.println("[hub][hal] relays -> safe state (OFF)");
