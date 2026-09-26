@@ -89,6 +89,18 @@ Dos líneas `[E]` inofensivas (`TWDT already initialized`, `task not found`) por
 
 Arranque limpio hasta `[hub][api] HTTP listening on port 80`: sin crash loop, sin errores de GPIO, una sola línea del DHT22 y silencio después. Los cuatro fixes pasaron CI (build de ambos envs + backend + en frontend) y quedaron mergeados (#21, `develop` en `9e24832`).
 
+### Puesta en marcha: placa online y cadena completa verificada
+
+Cerrado el bring-up, la puesta en marcha quedó así (26/09/2026):
+
+1. **Provisioning de WiFi**: la herramienta `tools/wifi-provision` grabó las credenciales en NVS. Detalle de tooling para el artículo: un SSID con espacios (p. ej. `Familia Zarazaga`) rompe las *build flags* de PlatformIO, que se parten por espacios — se soluciona escapando el espacio (`WIFI_SSID='Familia\ Zarazaga'`). Queda como mejora pendiente que la herramienta no dependa de ese escape.
+2. **Conexión**: al reflashear el firmware principal, el arranque mostró `connecting to SSID ...` → `connected, IP 192.168.0.221, RSSI -42 dBm` → `HTTP listening on port 80`.
+3. **Registro en el hub**: `npm run devices:register` creó el device `riego-patio` (`192.168.0.221:80`, capabilities `riego` + `luces`) y el poller pull lo marcó **online en ~11 segundos**.
+4. **Cadena completa verificada en vivo**: `POST /devices/:id/actions {turn_on, riego}` → el backend lo mapeó a `POST /riego/on` en la placa (HTTP 200) → `GET /estado` reflejó `"riego":"on"`; el `turn_off` volvió a `"off"`. Es exactamente el camino que usa el botón del dashboard.
+5. **Limpieza**: se eliminaron 31 devices de prueba que los e2e habían dejado en la base local; la DB quedó solo con la placa real.
+
+Falta lo puramente físico: relés con carga y DHT22 cableado (ver pendientes).
+
 ## Comandos clave (apéndice)
 
 ```bash
@@ -108,8 +120,9 @@ xtensa-esp32s3-elf-addr2line -pfiaC -e firmware/esp32/.pio/build/esp32-s3-devkit
 
 ## Pendientes al cierre (estado al 26/09/2026)
 
-- Provisioning WiFi en la placa + reflash del firmware principal + verificación de conexión (IP por serie).
-- Registro de la placa en el hub (`npm run devices:register -- --name ... --ip <IP> --port 80`) y prueba funcional completa: relés (LED → carga real), DHT22 cableado, WDT (`POST /debug/hang` → `reset_reason: TASK_WDT`) y OTA por aire.
+- ✅ Provisioning, conexión WiFi, registro en el hub y cadena backend→placa verificada en vivo (ver "Puesta en marcha").
+- Cableado del módulo de relés (GPIO4/5) y del DHT22 (GPIO15 + pull-up), y pruebas físicas: clic de relés sin carga → con carga real; lecturas del sensor en las cards y como telemetría en el backend.
+- Pruebas de banco: watchdog (`POST /debug/hang` → `reset_reason: TASK_WDT`) y OTA por aire (subir el `.bin`, verificar versión y rollback documentado).
 - Swap del nodo MQTT de n8n por HTTP `POST /devices/:id/actions` (cambio `n8n-e2e`).
 - Decisión de despliegue a producción (JWT_SECRET real, migraciones, URL pública).
 
@@ -119,5 +132,5 @@ xtensa-esp32s3-elf-addr2line -pfiaC -e firmware/esp32/.pio/build/esp32-s3-devkit
 2. **El backtrace con el ELF exacto es oro**: `addr2line` convirtió "assert misterioso" en una cadena de llamadas legible en un minuto.
 3. **Los pin maps y el fail-safe se diseñan antes**: "relés OFF antes que todo" y los `static_assert` de pines pagaron el día de la placa.
 4. **Slices verificables sin hardware**: la disciplina "compila + respeta el contrato + bien diseñado" permitió llegar al bring-up con el sistema entero funcionando en local.
-5. **Tooling del ecosistema ESP32**: el core 3.x rompe recetas viejas (`digitalWrite`), el USB nativo tiene sus rituales (BOOT+RESET, puerto que cambia de nombre) y la toolchain pinneada importa.
+5. **Tooling del ecosistema ESP32**: el core 3.x rompe recetas viejas (`digitalWrite`), el USB nativo tiene sus rituales (BOOT+RESET, puerto que cambia de nombre), la toolchain pinneada importa y hasta un SSID con espacios tiene su truco de *escaping* en las build flags.
 6. **El CI como red de seguridad**: cada fix entró con build de firmware + backend + frontend en verde.
