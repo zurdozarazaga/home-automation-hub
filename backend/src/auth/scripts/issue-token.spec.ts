@@ -42,6 +42,42 @@ describe('parseIssueTokenArgs', () => {
       parseIssueTokenArgs(['--role', 'admin', '--sub', '  ']),
     ).toThrow(/--sub must not be empty/);
   });
+
+  it('parses --ttl durations and --days sugar', () => {
+    expect(parseIssueTokenArgs(['--role', 'service', '--ttl', '720h'])).toEqual(
+      { role: 'service', sub: undefined, ttl: '720h' },
+    );
+    expect(parseIssueTokenArgs(['--role', 'service', '--days', '30'])).toEqual({
+      role: 'service',
+      sub: undefined,
+      ttl: '30d',
+    });
+  });
+
+  it('rejects invalid or conflicting TTL options', () => {
+    expect(() =>
+      parseIssueTokenArgs(['--role', 'service', '--ttl', 'forever']),
+    ).toThrow(/--ttl must look like/);
+    expect(() =>
+      parseIssueTokenArgs(['--role', 'service', '--ttl', '0h']),
+    ).toThrow(/--ttl must look like/);
+    expect(() =>
+      parseIssueTokenArgs(['--role', 'service', '--days', '0']),
+    ).toThrow(/--days must be a positive integer/);
+    expect(() =>
+      parseIssueTokenArgs(['--role', 'service', '--days', '1.5']),
+    ).toThrow(/--days must be a positive integer/);
+    expect(() =>
+      parseIssueTokenArgs([
+        '--role',
+        'service',
+        '--ttl',
+        '24h',
+        '--days',
+        '30',
+      ]),
+    ).toThrow(/mutually exclusive/);
+  });
 });
 
 describe('issueToken', () => {
@@ -60,6 +96,20 @@ describe('issueToken', () => {
     );
 
     expect(payload).toMatchObject({ sub: 'ops-viewer', role: 'viewer' });
+  });
+
+  it('defaults to a 24h lifetime', async () => {
+    const payload = await verify(await issueToken(secret, { role: 'admin' }));
+
+    expect((payload.exp ?? 0) - (payload.iat ?? 0)).toBe(24 * 60 * 60);
+  });
+
+  it('honors a custom ttl', async () => {
+    const payload = await verify(
+      await issueToken(secret, { role: 'service', ttl: '720h' }),
+    );
+
+    expect((payload.exp ?? 0) - (payload.iat ?? 0)).toBe(720 * 60 * 60);
   });
 });
 
