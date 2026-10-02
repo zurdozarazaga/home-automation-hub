@@ -17,8 +17,7 @@
 #include <WebServer.h>
 #include <WiFi.h>
 
-#include "hal/relays.h"
-#include "sensors/dht22.h"
+#include "api/state_json.h"
 #include "sys/build_info.h"
 #include "sys/watchdog.h"
 
@@ -50,26 +49,11 @@ inline void registerRoutes(WebServer& server) {
     doc["uptime_s"] = millis() / 1000;
     doc["free_heap"] = ESP.getFreeHeap();
     doc["rssi_dbm"] = (WiFi.status() == WL_CONNECTED) ? WiFi.RSSI() : 0;
+    // Shared with the outbound sync payload (api/state_json.h).
     JsonObject relays = doc["relays"].to<JsonObject>();
-    relays["riego"] = hal::relays::riegoState();
-    relays["luces"] = hal::relays::lucesState();
+    api::state::fillRelays(relays);
     JsonObject sensors = doc["sensors"].to<JsonObject>();
-    // Backend telemetry contract (telemetry/dto/ingest-telemetry.dto.ts)
-    // ingests metric readings {ts, metric, value, unit?, source?}. The
-    // future forwarder maps this snapshot as:
-    //   temperature_c -> {metric: "temperature", unit: "celsius", source: "dht22"}
-    //   humidity_pct  -> {metric: "humidity", unit: "percent", source: "dht22"}
-    // No clock on the board: freshness travels as age_s, backend stamps ts.
-    if (sensors::dht22::hasReading()) {
-      sensors["temperature_c"] = sensors::dht22::temperatureC();
-      sensors["humidity_pct"] = sensors::dht22::humidityPct();
-      sensors["age_s"] = sensors::dht22::readingAgeMs() / 1000;
-    } else {
-      sensors["temperature_c"] = nullptr;
-      sensors["humidity_pct"] = nullptr;
-      sensors["age_s"] = nullptr;
-    }
-    sensors["valid"] = sensors::dht22::hasReading();
+    api::state::fillSensors(sensors);
     sendJson(server, doc);
   });
 
