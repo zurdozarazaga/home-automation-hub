@@ -20,7 +20,6 @@
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
-#include <HTTPClient.h>
 #include <Preferences.h>
 #include <WiFi.h>
 
@@ -206,30 +205,91 @@ inline void processResponse(const String& body) {
   }
 }
 
-inline void syncOnce() {
+// Minimal HTTP POST over a raw WiFiClient.
+//
+// HTTPClient is intentionally NOT used: on this board (ESP32-S3, arduino-esp32
+// 3.3.x) its request flow panics the closed-source WiFi driver ~100 ms after
+// the first POST (lmacProcessCtsTimeout -> rcReachRetryLimit, LoadProhibited).
+// The raw flow below was validated clean on hardware for 30+ cycles. Request
+// goes out as a single write (Nagle coalesces it into one TCP segment).
+inline void httpPost(const String& path, const String& body, String& response, int& statusCode) {
+  statusCode = -2;  // invalid url in NVS
   const Config& cfg = config();
-  HTTPClient http;
-  WiFiClient client;
-  http.setConnectTimeout(kHttpTimeoutMs);
-  http.setTimeout(kHttpTimeoutMs);
-  if (!http.begin(client, cfg.url + "/board/sync")) {
-    reportStatus(-2);
+  String host = cfg.url;
+  const int scheme = host.indexOf("://");
+  if (scheme < 0) {
     return;
   }
-  http.addHeader("Content-Type", "application/json");
-  http.addHeader("Authorization", "Bearer " + cfg.token);
-  const int httpStatus = http.POST(buildPayload());
+  host = host.substring(scheme + 3);
+  uint16_t port = 80;
+  const int colon = host.lastIndexOf(':');
+  if (colon >= 0) {
+    port = static_cast<uint16_t>(host.substring(colon + 1).toInt());
+    host = host.substring(0, colon);
+  }
+  if (host.isEmpty() || port == 0) {
+    return;
+  }
+
+  statusCode = -1;  // connection failed
+  WiFiClient client;
+  client.setTimeout(kHttpTimeoutMs);
+  if (!client.connect(host.c_str(), port)) {
+    return;
+  }
+
+  String request;
+  request.reserve(256 + cfg.token.length() + body.length());
+  request += "POST " + path + " HTTP/1.0\r\n";
+  request += "Host: " + host + ":" + String(port) + "\r\n";
+  request += "Content-Type: application/json\r\n";
+  request += "Authorization: Bearer " + cfg.token + "\r\n";
+  request += "Content-Length: " + String(body.length()) + "\r\n";
+  request += "Connection: close\r\n\r\n";
+  request += body;
+  client.write(reinterpret_cast<const uint8_t*>(request.c_str()), request.length());
+
+  // Read until the server closes (HTTP/1.0 + Connection: close) or timeout.
+  const unsigned long deadline = millis() + kHttpTimeoutMs;
+  while (millis() < deadline && (client.connected() || client.available())) {
+    while (client.available()) {
+      response += static_cast<char>(client.read());
+    }
+    if (response.length() > 8192 || (!client.connected() && !client.available())) {
+      break;
+    }
+    delay(1);
+  }
+  client.stop();
+
+  if (!response.startsWith("HTTP/")) {
+    statusCode = -1;
+    return;
+  }
+  const int space = response.indexOf(' ');
+  statusCode = (space >= 0) ? response.substring(space + 1, space + 4).toInt() : 0;
+  if (statusCode <= 0) {
+    statusCode = -1;
+  }
+}
+
+inline void syncOnce() {
+  String response;
+  int httpStatus = 0;
+  httpPost("/board/sync", buildPayload(), response, httpStatus);
   if (httpStatus == 200) {
     // The queue did not change between building the payload and this point
     // (single-threaded loop), so clearing now removes exactly the acks that
     // were sent; acks for commands below enqueue after the clear.
     ackQueue().count = 0;
-    processResponse(http.getString());
+    const int bodyStart = response.indexOf("\r\n\r\n");
+    if (bodyStart >= 0) {
+      processResponse(response.substring(bodyStart + 4));
+    }
     reportStatus(200);
-  } else {
-    reportStatus(httpStatus <= 0 ? -1 : httpStatus);
+    return;
   }
-  http.end();
+  reportStatus(httpStatus);
 }
 
 }  // namespace
