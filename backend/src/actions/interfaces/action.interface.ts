@@ -30,3 +30,18 @@ export interface ActionExecutionResult {
   httpStatusCode: number;
   executedAt: Date;
 }
+
+/**
+ * Push-link response: the command was persisted for the board to pick up on
+ * its next POST /board/sync. The final outcome (and the ActionLog row)
+ * arrives later with the board ack.
+ */
+export interface QueuedActionExecutionResult {
+  deviceId: string;
+  action: DeviceAction;
+  target: DeviceTarget;
+  endpoint: string;
+  commandId: string;
+  result: 'queued';
+  executedAt: Date;
+}
