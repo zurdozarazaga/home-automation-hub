@@ -5,6 +5,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { DEVICE_COMMAND_REPOSITORY } from '../board/constants/device-command-repository.token';
+import { DeviceCommandRepository } from '../board/interfaces/device-command-repository.interface';
 import { DEVICE_DRIVER } from '../devices/constants/driver.tokens';
 import { DevicesService } from '../devices/devices.service';
 import { DriverResolverService } from '../devices/drivers/driver-resolver.service';
@@ -26,7 +28,9 @@ function buildDevice(overrides: Partial<Device> = {}): Device {
     mqttTopic: undefined,
     ipAddress: '192.168.1.80',
     port: 80,
+    macAddress: null,
     status: 'online',
+    lastSeenAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,
@@ -39,6 +43,7 @@ describe('ActionsService', () => {
   let driverResolver: jest.Mocked<DriverResolverService>;
   let transport: jest.Mocked<DeviceTransport>;
   let actionLogRepository: jest.Mocked<ActionLogRepository>;
+  let commandRepository: jest.Mocked<DeviceCommandRepository>;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -69,6 +74,16 @@ describe('ActionsService', () => {
             findAllByDeviceId: jest.fn(),
           },
         },
+        {
+          provide: DEVICE_COMMAND_REPOSITORY,
+          useValue: {
+            create: jest.fn(),
+            findById: jest.fn(),
+            claimPendingByDevice: jest.fn(),
+            acknowledge: jest.fn(),
+            expireStale: jest.fn(),
+          },
+        },
       ],
     }).compile();
 
@@ -77,6 +92,7 @@ describe('ActionsService', () => {
     driverResolver = module.get(DEVICE_DRIVER);
     transport = module.get(DEVICE_TRANSPORT);
     actionLogRepository = module.get(ACTION_LOG_REPOSITORY);
+    commandRepository = module.get(DEVICE_COMMAND_REPOSITORY);
 
     driverResolver.resolve.mockImplementation(() => new Esp32Driver());
     actionLogRepository.create.mockResolvedValue({
@@ -259,5 +275,113 @@ describe('ActionsService', () => {
 
     expect(transport.send.mock.calls).toHaveLength(0);
     expect(actionLogRepository.create.mock.calls).toHaveLength(0);
+  });
+
+  describe('push link mode', () => {
+    beforeEach(() => {
+      process.env.DEVICE_LINK_MODE = 'push';
+    });
+
+    afterEach(() => {
+      delete process.env.DEVICE_LINK_MODE;
+    });
+
+    it('queues the action for an online board without touching the transport', async () => {
+      const device = buildDevice({ lastSeenAt: new Date() });
+      devicesService.findById.mockResolvedValue(device);
+      commandRepository.create.mockResolvedValue({
+        id: 'command-1',
+        deviceId: device.id,
+        action: 'turn_on',
+        target: 'riego',
+        endpoint: '/riego/on',
+        status: 'pending',
+        createdAt: new Date(),
+      });
+
+      const result = await actionsService.execute(device.id, {
+        action: 'turn_on',
+        target: 'riego',
+      });
+
+      expect(result).toMatchObject({
+        result: 'queued',
+        commandId: 'command-1',
+        endpoint: '/riego/on',
+      });
+      expect(commandRepository.create.mock.calls).toHaveLength(1);
+      const [createInput] = commandRepository.create.mock.calls[0];
+      expect(createInput).toEqual({
+        deviceId: device.id,
+        action: 'turn_on',
+        target: 'riego',
+        endpoint: '/riego/on',
+      });
+      expect(transport.send.mock.calls).toHaveLength(0);
+      // The final ActionLog is written on the ack, not at enqueue time.
+      expect(actionLogRepository.create.mock.calls).toHaveLength(0);
+    });
+
+    it('rejects with 502 and logs when the board never synced', async () => {
+      const device = buildDevice({ lastSeenAt: null });
+      devicesService.findById.mockResolvedValue(device);
+
+      await expect(
+        actionsService.execute(device.id, {
+          action: 'turn_on',
+          target: 'riego',
+        }),
+      ).rejects.toBeInstanceOf(BadGatewayException);
+
+      expect(commandRepository.create.mock.calls).toHaveLength(0);
+      const [logEntry] = actionLogRepository.create.mock.calls[0];
+      expect(logEntry).toEqual(
+        expect.objectContaining({
+          result: 'failed',
+          endpoint: '/riego/on',
+          httpStatusCode: 502,
+        }),
+      );
+      expect(logEntry?.errorMessage).toContain('never seen');
+    });
+
+    it('rejects with 502 and reports staleness when the board sync is old', async () => {
+      const device = buildDevice({
+        lastSeenAt: new Date(Date.now() - 60_000),
+      });
+      devicesService.findById.mockResolvedValue(device);
+
+      await expect(
+        actionsService.execute(device.id, {
+          action: 'turn_off',
+          target: 'luces',
+        }),
+      ).rejects.toThrow(/last seen 60s ago/);
+
+      expect(commandRepository.create.mock.calls).toHaveLength(0);
+      const [logEntry] = actionLogRepository.create.mock.calls[0];
+      expect(logEntry).toEqual(
+        expect.objectContaining({
+          result: 'failed',
+          endpoint: '/luces/off',
+          httpStatusCode: 502,
+        }),
+      );
+      expect(logEntry?.errorMessage).toContain('last seen 60s ago');
+    });
+
+    it('keeps capability validation ahead of queueing', async () => {
+      const device = buildDevice({ lastSeenAt: new Date() });
+      devicesService.findById.mockResolvedValue(device);
+
+      await expect(
+        actionsService.execute(device.id, {
+          action: 'turn_on',
+          target: 'cortina',
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+
+      expect(commandRepository.create.mock.calls).toHaveLength(0);
+    });
   });
 });

@@ -30,6 +30,14 @@ export class DevicesService {
     return device;
   }
 
+  /**
+   * Nullable on purpose: the board sync endpoint answers 404 itself with a
+   * registration hint when the MAC is unknown.
+   */
+  async findByMacAddress(macAddress: string): Promise<Device | null> {
+    return this.deviceRepository.findByMacAddress(macAddress);
+  }
+
   async create(createDeviceDto: CreateDeviceDto): Promise<Device> {
     await this.ensureUniqueName(createDeviceDto.name);
 
@@ -99,6 +107,23 @@ export class DevicesService {
     if (!updatedDevice) {
       throw new NotFoundException(`Device ${id} not found`);
     }
+  }
+
+  /**
+   * Heartbeat write for the push link: the board just reached
+   * POST /board/sync, so it is online as of now.
+   */
+  async markSeen(id: string): Promise<Device> {
+    const updatedDevice = await this.deviceRepository.update(id, {
+      status: 'online',
+      lastSeenAt: new Date(),
+    });
+
+    if (!updatedDevice) {
+      throw new NotFoundException(`Device ${id} not found`);
+    }
+
+    return updatedDevice;
   }
 
   private async ensureUniqueName(

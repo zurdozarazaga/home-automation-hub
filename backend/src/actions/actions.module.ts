@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { DeviceCommandsModule } from '../board/device-commands.module';
 import { DevicesModule } from '../devices/devices.module';
 import { ActionsController } from './actions.controller';
 import { ActionsService } from './actions.service';
@@ -14,7 +15,7 @@ import { TransportDispatcherService } from './transport/transport-dispatcher.ser
 const isPrismaDataSource = process.env.DATA_SOURCE === 'prisma';
 
 @Module({
-  imports: [DevicesModule],
+  imports: [DevicesModule, DeviceCommandsModule],
   controllers: [ActionsController],
   providers: [
     ActionsService,

@@ -46,7 +46,9 @@ cp .env.example .env
 | `AUTH_USERNAME` | `admin` | Login username |
 | `AUTH_PASSWORD` | `admin` (compose local default) | Login password. If unset the login endpoint answers 503 and logs `login disabled: AUTH_PASSWORD not set` |
 | `JWT_SECRET` | `local-dev-jwt-secret` | Signs and validates every JWT (login, CLI tokens, n8n). All issuers/verifiers must share it; prod MUST set a real random value |
-| `DEVICE_POLL_INTERVAL_MS` | `30000` | Device status/telemetry poller interval in ms; `<= 0` disables it |
+| `DEVICE_LINK_MODE` | `pull` | Board link direction: `pull` (backend polls the board) or `push` (board calls `POST /board/sync`). See [`board-link-modes.md`](board-link-modes.md) |
+| `DEVICE_POLL_INTERVAL_MS` | `30000` | Device status/telemetry poller interval in ms (pull mode); `<= 0` disables it |
+| `BOARD_SWEEP_INTERVAL_MS` | `30000` | Push-mode staleness sweep interval in ms; `<= 0` disables it |
 | `ESP32_HTTP_TIMEOUT_MS` | `5000` | Timeout for backend -> ESP32 HTTP calls (commands and `GET /estado`) |
 | `API_BASE_URL` | `http://backend:3001` | Server-side frontend -> backend base URL. Host-run dev uses `http://localhost:3001` |
 
@@ -84,15 +86,21 @@ The backend container runs `prisma generate` and `prisma migrate deploy` on star
 - Device actions are delivered over HTTP to `http://{ipAddress}:{port}`.
 - The monitoring poller pulls `GET /estado` from every `esp32` device that has an IP and port: reachable -> `status=online`, unreachable -> `status=offline`, and a valid DHT22 snapshot is ingested as telemetry (`temperature`/`humidity`).
 
+This is the default `DEVICE_LINK_MODE=pull`. When the backend runs outside
+the board's LAN (e.g. a VPS) switch to `push`: the board calls
+`POST /board/sync`, actions are queued and the freshness sweep replaces the
+poller. Full contract, envs and board registration: [`board-link-modes.md`](board-link-modes.md).
+
 ### Register the board
 
 ```bash
 docker compose -f docker-compose.local.yml exec backend \
   npm run devices:register -- \
-  --name "riego-patio" --ip 192.168.1.50 --port 80 --description "ESP32 riego y luces"
+  --name "riego-patio" --ip 192.168.1.50 --port 80 \
+  --mac "C0:4E:30:07:DE:10" --description "ESP32 riego y luces"
 ```
 
-The script upserts by name: re-running it with a new `--ip` re-points the same device (driver stays `esp32`). From the host, prefix the command with `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/home_automation_hub`.
+The script upserts by name: re-running it with a new `--ip` re-points the same device (driver stays `esp32`). `--mac` (optional) stores the board identity used by `POST /board/sync` in push mode. From the host, prefix the command with `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/home_automation_hub`.
 
 ## Login and tokens
 
@@ -114,6 +122,9 @@ docker compose -f docker-compose.local.yml exec backend npm run auth:issue-token
 
 # from the host (backend/)
 JWT_SECRET=local-dev-jwt-secret npm run auth:issue-token -- --role viewer
+
+# long-lived service tokens (default is 24h); accepts --ttl 720h or --days 30
+JWT_SECRET=local-dev-jwt-secret npm run auth:issue-token -- --role service --sub board-patio --days 30
 ```
 
 `npm run auth:issue-service` stays as the service-token alias used by the n8n integration.

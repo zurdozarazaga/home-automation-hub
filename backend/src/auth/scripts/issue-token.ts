@@ -1,9 +1,13 @@
 import { JwtService } from '@nestjs/jwt';
+import type { JwtSignOptions } from '@nestjs/jwt';
 import type { JwtPayload } from '../interfaces/jwt-payload.interface';
 import type { Role } from '../interfaces/role.interface';
 
 export const TOKEN_TTL = '24h';
 export const VALID_ROLES: readonly Role[] = ['admin', 'viewer', 'service'];
+
+/** jsonwebtoken-style duration: 30s, 45m, 72h, 30d. */
+const TOKEN_TTL_PATTERN = /^[1-9]\d*(s|m|h|d)$/;
 
 export const DEFAULT_SUBS: Record<Role, string> = {
   admin: 'admin',
@@ -16,11 +20,17 @@ export const SERVICE_TOKEN_SUB = DEFAULT_SUBS.service;
 export const SERVICE_TOKEN_TTL = TOKEN_TTL;
 
 const USAGE =
-  'Usage: npm run auth:issue-token -- --role admin|viewer|service [--sub <subject>]';
+  'Usage: npm run auth:issue-token -- --role admin|viewer|service [--sub <subject>] [--ttl <duration> | --days <n>]';
 
 export interface IssueTokenOptions {
   role: Role;
   sub?: string;
+  /**
+   * Token lifetime in jsonwebtoken notation (`720h`, `30d`). Defaults to
+   * TOKEN_TTL (24h); `--days <n>` is sugar for `<n>d`. Useful for board and
+   * n8n service tokens that must survive long deployments.
+   */
+  ttl?: string;
 }
 
 /**
@@ -31,23 +41,46 @@ export interface IssueTokenOptions {
 export function parseIssueTokenArgs(argv: string[]): IssueTokenOptions {
   let role: string | undefined;
   let sub: string | undefined;
+  let ttl: string | undefined;
+  let days: string | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
     const flag = argv[index];
     const value = argv[index + 1];
 
-    if (flag === '--role' || flag === '--sub') {
+    if (
+      flag === '--role' ||
+      flag === '--sub' ||
+      flag === '--ttl' ||
+      flag === '--days'
+    ) {
       if (value === undefined || value.startsWith('--')) {
         throw new Error(`Missing value for ${flag}\n${USAGE}`);
       }
 
       if (flag === '--role') {
         role = value;
-      } else {
+      } else if (flag === '--sub') {
         if (value.trim() === '') {
           throw new Error(`--sub must not be empty\n${USAGE}`);
         }
         sub = value.trim();
+      } else if (flag === '--ttl') {
+        const candidate = value.trim();
+
+        if (!TOKEN_TTL_PATTERN.test(candidate)) {
+          throw new Error(
+            `--ttl must look like 72h, 30d, 45m or 30s\n${USAGE}`,
+          );
+        }
+        ttl = candidate;
+      } else {
+        const parsedDays = Number(value);
+
+        if (!Number.isInteger(parsedDays) || parsedDays < 1) {
+          throw new Error(`--days must be a positive integer\n${USAGE}`);
+        }
+        days = value.trim();
       }
 
       index += 1;
@@ -63,7 +96,15 @@ export function parseIssueTokenArgs(argv: string[]): IssueTokenOptions {
     );
   }
 
-  return { role: role as Role, sub };
+  if (ttl !== undefined && days !== undefined) {
+    throw new Error(`--ttl and --days are mutually exclusive\n${USAGE}`);
+  }
+
+  return {
+    role: role as Role,
+    sub,
+    ttl: ttl ?? (days !== undefined ? `${days}d` : undefined),
+  };
 }
 
 export function resolveSub(options: IssueTokenOptions): string {
@@ -76,7 +117,11 @@ export async function issueToken(
 ): Promise<string> {
   const jwtService = new JwtService({
     secret,
-    signOptions: { expiresIn: TOKEN_TTL },
+    signOptions: {
+      // Validated in parseIssueTokenArgs; the string type is wider than
+      // jsonwebtoken's StringValue template literal.
+      expiresIn: (options.ttl ?? TOKEN_TTL) as JwtSignOptions['expiresIn'],
+    },
   });
   const payload: Pick<JwtPayload, 'sub' | 'role'> = {
     sub: resolveSub(options),

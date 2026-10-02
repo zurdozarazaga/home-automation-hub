@@ -4,13 +4,14 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
+import { isPushLinkMode } from '../common/device-link';
 import { resolveDeviceHttpTimeoutMs } from '../common/http/device-http';
 import { DevicesService } from '../devices/devices.service';
 import type {
   Device,
   DeviceStatus,
 } from '../devices/interfaces/device.interface';
-import type { TelemetryReadingDto } from '../telemetry/dto/ingest-telemetry.dto';
+import { buildDht22Readings } from '../telemetry/dht22-readings';
 import { TelemetryService } from '../telemetry/telemetry.service';
 import type { DeviceEstadoResponse } from './interfaces/device-estado.interface';
 
@@ -47,6 +48,8 @@ export function resolveDevicePollIntervalMs(): number {
  *
  * Active only with DATA_SOURCE=prisma so in-memory local runs never touch
  * the network; `DEVICE_POLL_INTERVAL_MS=0` disables it (e2e uses this).
+ * `DEVICE_LINK_MODE=push` also disables it: the board syncs on its own and
+ * the board sweep owns staleness instead.
  */
 @Injectable()
 export class DevicePollerService implements OnModuleInit, OnModuleDestroy {
@@ -60,6 +63,11 @@ export class DevicePollerService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit(): void {
+    if (isPushLinkMode()) {
+      this.logger.log('Device poller disabled (DEVICE_LINK_MODE=push)');
+      return;
+    }
+
     if (process.env.DATA_SOURCE !== 'prisma') {
       this.logger.log('Device poller disabled (DATA_SOURCE is not prisma)');
       return;
@@ -190,28 +198,7 @@ export class DevicePollerService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    const ts = new Date().toISOString();
-    const readings: TelemetryReadingDto[] = [];
-
-    if (typeof sensors.temperature_c === 'number') {
-      readings.push({
-        ts,
-        metric: 'temperature',
-        value: sensors.temperature_c,
-        unit: 'celsius',
-        source: 'dht22',
-      });
-    }
-
-    if (typeof sensors.humidity_pct === 'number') {
-      readings.push({
-        ts,
-        metric: 'humidity',
-        value: sensors.humidity_pct,
-        unit: 'percent',
-        source: 'dht22',
-      });
-    }
+    const readings = buildDht22Readings(sensors, new Date().toISOString());
 
     if (readings.length === 0) {
       return;
