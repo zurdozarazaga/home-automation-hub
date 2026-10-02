@@ -55,6 +55,42 @@ describe('parseRegisterDeviceArgs', () => {
     });
   });
 
+  it('parses and normalizes the optional MAC address', () => {
+    expect(
+      parseRegisterDeviceArgs([
+        '--name',
+        'riego-patio',
+        '--ip',
+        '192.168.1.50',
+        '--port',
+        '80',
+        '--mac',
+        'c0-4e-30-07-de-10',
+      ]),
+    ).toEqual({
+      name: 'riego-patio',
+      ip: '192.168.1.50',
+      port: 80,
+      description: undefined,
+      mac: 'C0:4E:30:07:DE:10',
+    });
+  });
+
+  it('rejects an invalid MAC address', () => {
+    expect(() =>
+      parseRegisterDeviceArgs([
+        '--name',
+        'x',
+        '--ip',
+        '192.168.1.50',
+        '--port',
+        '80',
+        '--mac',
+        'not-a-mac',
+      ]),
+    ).toThrow(/--mac must be a valid MAC address/);
+  });
+
   it('rejects missing required flags', () => {
     expect(() => parseRegisterDeviceArgs([])).toThrow(/--name is required/);
     expect(() => parseRegisterDeviceArgs(['--name', 'x'])).toThrow(

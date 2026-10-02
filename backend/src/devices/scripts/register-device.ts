@@ -6,12 +6,33 @@ export interface RegisterDeviceOptions {
   ip: string;
   port: number;
   description?: string;
+  mac?: string;
 }
 
-const SUPPORTED_FLAGS = new Set(['--name', '--ip', '--port', '--description']);
+const SUPPORTED_FLAGS = new Set([
+  '--name',
+  '--ip',
+  '--port',
+  '--description',
+  '--mac',
+]);
 
 const USAGE =
-  'Usage: npm run devices:register -- --name <name> --ip <ipv4> --port <port> [--description <text>]';
+  'Usage: npm run devices:register -- --name <name> --ip <ipv4> --port <port> [--mac <aa:bb:cc:dd:ee:ff>] [--description <text>]';
+
+const MAC_ADDRESS_PATTERN = /^[0-9A-Fa-f]{2}([:-][0-9A-Fa-f]{2}){5}$/;
+
+/**
+ * Canonical `AA:BB:CC:DD:EE:FF` form. Boards may report their MAC in any
+ * case, so the stored identity is normalized once at registration.
+ */
+export function normalizeMacAddress(raw: string): string | null {
+  if (!MAC_ADDRESS_PATTERN.test(raw)) {
+    return null;
+  }
+
+  return raw.replace(/-/g, ':').toUpperCase();
+}
 
 export function parseRegisterDeviceArgs(argv: string[]): RegisterDeviceOptions {
   const values = new Map<string, string>();
@@ -45,6 +66,7 @@ export function parseRegisterDeviceArgs(argv: string[]): RegisterDeviceOptions {
   const ip = values.get('--ip');
   const portRaw = values.get('--port');
   const description = values.get('--description');
+  const macRaw = values.get('--mac');
 
   if (!name) {
     throw new Error(`--name is required\n${USAGE}`);
@@ -68,12 +90,27 @@ export function parseRegisterDeviceArgs(argv: string[]): RegisterDeviceOptions {
     throw new Error(`--port must be an integer between 1 and 65535\n${USAGE}`);
   }
 
-  return { name, ip, port, description: description || undefined };
+  const mac = macRaw === undefined ? undefined : normalizeMacAddress(macRaw);
+
+  if (macRaw !== undefined && mac === null) {
+    throw new Error(
+      `--mac must be a valid MAC address (e.g. AA:BB:CC:DD:EE:FF)\n${USAGE}`,
+    );
+  }
+
+  return {
+    name,
+    ip,
+    port,
+    description: description || undefined,
+    mac: mac ?? undefined,
+  };
 }
 
 /**
  * Upserts the physical board in Postgres by name so it can be registered
  * when it arrives (and re-run safely after an IP change). Always esp32.
+ * `--mac` stores the board identity used by POST /board/sync in push mode.
  */
 export async function registerDevice(
   options: RegisterDeviceOptions,
@@ -87,6 +124,7 @@ export async function registerDevice(
         ipAddress: options.ip,
         port: options.port,
         driver: 'esp32',
+        ...(options.mac !== undefined ? { macAddress: options.mac } : {}),
         ...(options.description !== undefined
           ? { description: options.description }
           : {}),
@@ -98,6 +136,7 @@ export async function registerDevice(
         capabilities: ['riego', 'luces'],
         ipAddress: options.ip,
         port: options.port,
+        macAddress: options.mac,
         status: 'offline',
       },
     });
@@ -121,8 +160,10 @@ async function main(): Promise<void> {
   }
 
   const id = await registerDevice(options);
+  const macSuffix = options.mac ? ` mac ${options.mac}` : '';
+
   console.log(
-    `Device "${options.name}" registered with id ${id} at ${options.ip}:${options.port}`,
+    `Device "${options.name}" registered with id ${id} at ${options.ip}:${options.port}${macSuffix}`,
   );
 }
 
