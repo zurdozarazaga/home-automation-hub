@@ -3,6 +3,7 @@ import { ActionsModule } from '../actions/actions.module';
 import { DevicesModule } from '../devices/devices.module';
 import { TelemetryModule } from '../telemetry/telemetry.module';
 import { BoardController } from './board.controller';
+import { BoardSweepService } from './board-sweep.service';
 import { BoardSyncService } from './board-sync.service';
 import { DeviceCommandsModule } from './device-commands.module';
 
@@ -19,6 +20,6 @@ import { DeviceCommandsModule } from './device-commands.module';
     DeviceCommandsModule,
   ],
   controllers: [BoardController],
-  providers: [BoardSyncService],
+  providers: [BoardSyncService, BoardSweepService],
 })
 export class BoardModule {}
