@@ -159,6 +159,21 @@ Modo de enlace opcional y aditivo: la placa sigue exponiendo el mismo servidor H
 - **Logs throttled**: el estado del enlace se loguea solo en transiciones (`link up` / `link down: ...`), sin spam cada 3 s; un 404 sugiere `mac not registered`.
 - **Watchdog**: cada intento bloquea el loop como máximo ~4 s, muy por debajo de la ventana de 10 s; el feed del loop sigue intacto.
 
+### Provisioning del hub (HUB_URL / HUB_TOKEN)
+
+`firmware/tools/wifi-provision` graba también las claves del hub — solo si las variables vienen no-vacías:
+
+```bash
+cd firmware/tools/wifi-provision
+WIFI_SSID='tu-red' WIFI_PASS='tu-clave' \
+HUB_URL='http://mi-vps:3001' HUB_TOKEN='<jwt-service>' \
+pio run -t upload
+```
+
+- Sin `HUB_URL`/`HUB_TOKEN` (o vacías) el tool no toca las claves `hub/*` y el push queda deshabilitado.
+- El token nunca se imprime (solo su tamaño); la URL sí, igual que el SSID.
+- Valores con espacios necesitan escape en build flags de PlatformIO; URLs y JWT normales no tienen espacios.
+
 ### Probar el ciclo completo en push
 
 1. Backend con `DEVICE_LINK_MODE=push` y reiniciado.
@@ -188,6 +203,7 @@ Luego reflashea el firmware normal (`pio run -d firmware/esp32 -t upload`). El N
 | Paso | Comando | Qué prueba |
 |------|---------|------------|
 | Compilación local | `pio run -d firmware/esp32` | Compila los **dos envs** (default + debug): cubre ambas ramas de cada `#if` (credenciales OTA presentes/ausentes, sensor real/fake, hook de hang) |
+| Provision tool | `WIFI_SSID=ci WIFI_PASS=ci HUB_URL=http://example.invalid HUB_TOKEN=ci pio run -d firmware/tools/wifi-provision` | Compila el tool; sin `HUB_*` también compila y las claves `hub/*` quedan intactas |
 | CI | push/PR (workflow `Firmware CI`) | Lo mismo en Ubuntu limpio + guardarraíl anti-secretos |
 | Anti-secretos | `grep -rniE 'WiFi\.begin\(\s*"' firmware/esp32/src` (vacío = bien) | Nadie quemó credenciales en el código |
 | Limpieza | `git status` | Solo archivos nuevos del firmware, nada en backend/frontend |
@@ -210,7 +226,7 @@ firmware/esp32/
   src/api/state_json.h  shapes JSON compartidos (/estado y payload del sync)
 
 firmware/tools/wifi-provision/
-  src/main.cpp          grabación one-shot de ssid/pass en NVS (env vars; sin secretos)
+  src/main.cpp          grabación one-shot de ssid/pass + hub url/token en NVS (env vars; sin secretos)
 ```
 
 ## Roadmap (de `docs/aprendizaje/02-integrando-el-esp32.md`)

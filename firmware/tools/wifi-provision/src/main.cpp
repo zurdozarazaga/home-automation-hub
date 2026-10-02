@@ -1,7 +1,8 @@
-// One-shot WiFi provisioning tool: writes ssid/pass into the NVS namespace
-// "wifi" so the main firmware can read them at boot (src/net/wifi_nvs.h).
-// Credentials come from build flags fed by the shell environment; nothing is
-// stored in the repo. After a successful run, reflash the main firmware.
+// One-shot provisioning tool: writes ssid/pass into the NVS namespace
+// "wifi" and (optionally) url/token into "hub" so the main firmware can read
+// them at boot (src/net/wifi_nvs.h, src/net/hub_sync.h). Values come from
+// build flags fed by the shell environment; nothing is stored in the repo.
+// After a successful run, reflash the main firmware.
 #include <Arduino.h>
 #include <Preferences.h>
 
@@ -16,15 +17,18 @@
 static_assert(sizeof(WIFI_SSID) > 1, "WIFI_SSID is empty; set the WIFI_SSID env var");
 static_assert(sizeof(WIFI_PASS) > 1, "WIFI_PASS is empty; set the WIFI_PASS env var");
 
+// HUB_URL / HUB_TOKEN are optional: when the env vars are unset (or empty)
+// the defines arrive empty and the existing "hub" keys stay untouched.
+
 void setup() {
   Serial.begin(115200);
   delay(300);
   Serial.println();
-  Serial.println("[provision] writing WiFi credentials to NVS namespace 'wifi'...");
+  Serial.println("[provision] writing credentials to NVS...");
 
   Preferences prefs;
   if (!prefs.begin("wifi", /*readOnly=*/false)) {
-    Serial.println("[provision] ERROR: could not open NVS");
+    Serial.println("[provision] ERROR: could not open NVS namespace 'wifi'");
     return;
   }
   const size_t ssidBytes = prefs.putString("ssid", WIFI_SSID);
@@ -35,6 +39,38 @@ void setup() {
                 WIFI_SSID,
                 static_cast<unsigned>(ssidBytes),
                 static_cast<unsigned>(passBytes));
+
+  // Optional hub sync keys (push link mode): written only when non-empty.
+  bool hubWrote = false;
+  if (!prefs.begin("hub", /*readOnly=*/false)) {
+    Serial.println("[provision] ERROR: could not open NVS namespace 'hub'");
+    return;
+  }
+#ifdef HUB_URL
+  if (sizeof(HUB_URL) > 1) {
+    const size_t urlBytes = prefs.putString("url", HUB_URL);
+    Serial.printf("[provision] saved hub url \"%s\" (%u bytes)\n",
+                  HUB_URL,
+                  static_cast<unsigned>(urlBytes));
+    hubWrote = true;
+  }
+#endif
+#ifdef HUB_TOKEN
+  if (sizeof(HUB_TOKEN) > 1) {
+    // Never print the token itself, only its size.
+    const size_t tokenBytes = prefs.putString("token", HUB_TOKEN);
+    Serial.printf("[provision] saved hub token (%u bytes)\n",
+                  static_cast<unsigned>(tokenBytes));
+    hubWrote = true;
+  }
+#endif
+  prefs.end();
+
+  if (!hubWrote) {
+    Serial.println(
+        "[provision] hub url/token not provided; push stays disabled (keys untouched)");
+  }
+
   Serial.println("[provision] done. Now reflash the main firmware:");
   Serial.println("[provision]   pio run -d firmware/esp32 -t upload");
 }
