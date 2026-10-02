@@ -41,6 +41,18 @@ export class InMemoryDeviceRepository implements DeviceRepository {
     return Promise.resolve(null);
   }
 
+  findByMacAddress(macAddress: string): Promise<Device | null> {
+    const normalizedMac = macAddress.trim().toUpperCase();
+
+    for (const device of this.devices.values()) {
+      if (device.macAddress?.toUpperCase() === normalizedMac) {
+        return Promise.resolve(device);
+      }
+    }
+
+    return Promise.resolve(null);
+  }
+
   create(input: CreateDeviceInput): Promise<Device> {
     const now = new Date();
     const device: Device = {
@@ -52,7 +64,9 @@ export class InMemoryDeviceRepository implements DeviceRepository {
       mqttTopic: input.mqttTopic,
       ipAddress: input.ipAddress ?? null,
       port: input.port ?? null,
+      macAddress: input.macAddress ?? null,
       status: 'offline',
+      lastSeenAt: null,
       createdAt: now,
       updatedAt: now,
     };

@@ -81,6 +81,31 @@ export class PrismaDeviceRepository implements DeviceRepository {
     }
   }
 
+  async findByMacAddress(macAddress: string): Promise<Device | null> {
+    try {
+      // Boards may report the MAC in any case; the stored value keeps its
+      // canonical uppercase form (see devices:register --mac).
+      const device = await this.prisma.device.findFirst({
+        where: {
+          macAddress: {
+            equals: macAddress,
+            mode: 'insensitive',
+          },
+        },
+      });
+
+      return device ? this.mapDevice(device) : null;
+    } catch (error) {
+      this.logger.error(
+        `Failed to fetch device by MAC address: ${macAddress}`,
+        error,
+      );
+      throw new InternalServerErrorException(
+        'Failed to fetch device by MAC address',
+      );
+    }
+  }
+
   async create(input: CreateDeviceInput): Promise<Device> {
     try {
       const created = await this.prisma.device.create({
@@ -92,6 +117,7 @@ export class PrismaDeviceRepository implements DeviceRepository {
           mqttTopic: input.mqttTopic,
           ipAddress: input.ipAddress,
           port: input.port,
+          macAddress: input.macAddress,
           status: 'offline',
         },
       });
@@ -100,7 +126,7 @@ export class PrismaDeviceRepository implements DeviceRepository {
     } catch (error) {
       if (this.isUniqueConstraintError(error)) {
         throw new ConflictException(
-          'A device with the same name or network address already exists',
+          'A device with the same name, MAC address or network address already exists',
         );
       }
 
@@ -127,7 +153,7 @@ export class PrismaDeviceRepository implements DeviceRepository {
 
       if (this.isUniqueConstraintError(error)) {
         throw new ConflictException(
-          'A device with the same name or network address already exists',
+          'A device with the same name, MAC address or network address already exists',
         );
       }
 
@@ -183,7 +209,9 @@ export class PrismaDeviceRepository implements DeviceRepository {
     mqttTopic: string | null;
     ipAddress: string | null;
     port: number | null;
+    macAddress: string | null;
     status: string;
+    lastSeenAt: Date | null;
     createdAt: Date;
     updatedAt: Date;
   }): Device {
@@ -198,7 +226,9 @@ export class PrismaDeviceRepository implements DeviceRepository {
       mqttTopic: device.mqttTopic ?? undefined,
       ipAddress: device.ipAddress,
       port: device.port,
+      macAddress: device.macAddress,
       status,
+      lastSeenAt: device.lastSeenAt,
       createdAt: device.createdAt,
       updatedAt: device.updatedAt,
     };
