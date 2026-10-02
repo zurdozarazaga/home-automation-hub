@@ -31,6 +31,9 @@ inline bool connectFromNvs() {
   WiFi.mode(WIFI_STA);
   WiFi.setAutoReconnect(true);
   WiFi.persistent(true);
+  // Modem sleep off: push sync runs on a 3 s cadence and the board is
+  // mains-powered; keeping the radio awake removes latency variability.
+  WiFi.setSleep(false);
 
   Preferences prefs;
   if (!prefs.begin("wifi", /*readOnly=*/true)) {
