@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ActionsModule } from './actions/actions.module';
 import { AuthModule } from './auth/auth.module';
+import { BoardModule } from './board/board.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { DatabaseModule } from './database/database.module';
@@ -20,6 +21,7 @@ import { TelemetryModule } from './telemetry/telemetry.module';
     N8nModule,
     TelemetryModule,
     MonitoringModule,
+    BoardModule,
   ],
   controllers: [AppController],
   providers: [AppService],

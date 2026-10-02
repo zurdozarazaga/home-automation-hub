@@ -82,6 +82,7 @@ describe('DevicePollerService', () => {
     delete process.env.DATA_SOURCE;
     delete process.env.DEVICE_POLL_INTERVAL_MS;
     delete process.env.ESP32_HTTP_TIMEOUT_MS;
+    delete process.env.DEVICE_LINK_MODE;
   });
 
   it('marks a reachable board online and ingests DHT22 telemetry', async () => {
@@ -229,6 +230,21 @@ describe('DevicePollerService', () => {
       expect(jest.getTimerCount()).toBe(0);
       expect(logSpy).toHaveBeenCalledWith(
         expect.stringContaining('DATA_SOURCE'),
+      );
+      jest.useRealTimers();
+    });
+
+    it('stays off in push link mode', () => {
+      jest.useFakeTimers();
+      process.env.DATA_SOURCE = 'prisma';
+      process.env.DEVICE_POLL_INTERVAL_MS = '1000';
+      process.env.DEVICE_LINK_MODE = 'push';
+
+      service.onModuleInit();
+
+      expect(jest.getTimerCount()).toBe(0);
+      expect(logSpy).toHaveBeenCalledWith(
+        expect.stringContaining('DEVICE_LINK_MODE=push'),
       );
       jest.useRealTimers();
     });
