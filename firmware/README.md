@@ -4,10 +4,9 @@ Firmware de la placa **ESP32-S3-N16R8** (definición DevKitC-1; 16 MB de flash Q
 
 ## Alcance de este slice
 
-- Task Watchdog sobre el loop principal (10 s, panic + reset) con gracia de arranque y ventana estirada durante OTA; `reset_reason` visible en `/health`.
-- OTA funcional con ElegantOTA: portal `/update` con auth por defines de build, versión visible (`FW_VERSION` en `/health`) y confirmación de imagen lista para rollback.
-- Env `esp32-s3-devkitc-1-debug` para banco/CI: compila la rama con credenciales OTA, el hook `/debug/hang` y `SENSOR_FAKE`, que el env default no compila.
-- Relés GPIO4/5, sensor DHT22 y WiFi por NVS sin cambios.
+- Sync saliente opcional (modo push): `POST {url}/board/sync` cada 3 s con estado + acks, ejecución de los comandos encolados y ack en el siguiente sync.
+- Shapes de `/estado` y del payload compartidos en `src/api/state_json.h` para que no puedan divergir.
+- Relés, sensor, watchdog, OTA y el servidor HTTP local sin cambios.
 
 ## Contrato HTTP (lo que el backend consume)
 
@@ -149,6 +148,30 @@ build_flags =
   4. Verificá que volvió A: `GET /health` → `"fw"` de A; el serie muestra el bootloader eligiendo la partición anterior.
   5. Nota: un OTA nuevo solo puede empezar desde una imagen `VALID`; por eso importa confirmar temprano y no dejar la placa en `PENDING_VERIFY`.
 
+## Sync saliente contra el hub (modo push)
+
+Modo de enlace opcional y aditivo: la placa sigue exponiendo el mismo servidor HTTP local, y además empuja su estado al backend. Contrato completo en [`docs/board-link-modes.md`](../docs/board-link-modes.md); el backend lo activa con `DEVICE_LINK_MODE=push` (los procesos de fondo leen el modo al arrancar: requiere reiniciar la app).
+
+- **Config por NVS** (namespace `hub`): clave `url` (p. ej. `http://mi-vps:3001`) y clave `token` (JWT con rol `service`). Si `url` está vacía el push queda deshabilitado con un log único al arrancar: `[hub][sync] push disabled: no url in NVS (namespace 'hub')`.
+- **Cadencia**: `POST {url}/board/sync` cada `HUB_SYNC_INTERVAL_MS` (default 3000; override con `-DHUB_SYNC_INTERVAL_MS=...`), headers `Authorization: Bearer` + `Content-Type: application/json`, timeout de 4 s. El intervalo es un piso: si el backend tarda, el próximo intento sale al terminar el anterior (no se encolan requests). Una barra final en `url` no molesta.
+- **Payload**: `mac` + `fw` + `uptime_s` + `rssi_dbm` + `reset_reason` + `relays` + `sensors` (mismo shape que `/estado`, compartido en `src/api/state_json.h`) + `acks` pendientes.
+- **Comandos**: cada `{id, action, target}` de la respuesta se ejecuta sobre los relés y genera un ack; `action`/`target` desconocidos generan `{ok: false, httpStatus: 400, error: "unknown command"}`. Los acks viajan en el próximo sync y se limpian al recibir 200; si el POST falla quedan encolados. Buffer de 8 acks: si se llena, se descarta el más viejo (el backend expira sus comandos a los 120 s).
+- **Logs throttled**: el estado del enlace se loguea solo en transiciones (`link up` / `link down: ...`), sin spam cada 3 s; un 404 sugiere `mac not registered`.
+- **Watchdog**: cada intento bloquea el loop como máximo ~4 s, muy por debajo de la ventana de 10 s; el feed del loop sigue intacto.
+
+### Probar el ciclo completo en push
+
+1. Backend con `DEVICE_LINK_MODE=push` y reiniciado.
+2. Registrá la MAC de la placa (aparece en el log de arranque del firmware y en el payload del sync; el backend la compara case-insensitive):
+   ```bash
+   DATABASE_URL=postgresql://postgres:postgres@localhost:5432/home_automation_hub \
+     npm run devices:register -- --name "riego-patio" --ip 192.168.1.50 --port 80 \
+     --mac "C0:4E:30:07:DE:10"
+   ```
+3. En el serie debería aparecer `[hub][sync] link up`; en el backend el device queda `online`.
+4. `n8n → POST /devices/:id/actions` responde `202 queued`; en el siguiente sync la placa ejecuta el comando, loguea `applied ...` y el `ActionLog` final se escribe cuando el backend recibe el ack.
+5. Apagá el backend: el log pasa a `link down: connection failed` (una sola vez) y los acks quedan encolados hasta que vuelva.
+
 ## Secretos por NVS (nunca en el repo)
 
 Las credenciales WiFi viven en NVS (espacio `wifi`, claves `ssid` y `pass`). Está prohibido quemarlas con `-D` o constantes en el código. Para grabarlas una vez por USB usa la herramienta `tools/wifi-provision` (las credenciales entran como variables de entorno de tu shell y no tocan el repo):
@@ -182,7 +205,9 @@ firmware/esp32/
   src/sys/build_info.h  FW_VERSION + gate de credenciales OTA
   src/sys/ota_confirm.h confirmación de imagen post-OTA (rollback-ready)
   src/net/wifi_nvs.h    WiFi STA desde NVS + reconexión
+  src/net/hub_sync.h    sync saliente al hub (push: estado + comandos + acks)
   src/api/web_routes.h  contrato HTTP + JSON de estado
+  src/api/state_json.h  shapes JSON compartidos (/estado y payload del sync)
 
 firmware/tools/wifi-provision/
   src/main.cpp          grabación one-shot de ssid/pass en NVS (env vars; sin secretos)
@@ -190,4 +215,4 @@ firmware/tools/wifi-provision/
 
 ## Roadmap (de `docs/aprendizaje/02-integrando-el-esp32.md`)
 
-Hecho: GPIO real de relés, sensor DHT22, watchdog y OTA con auth + versión. Siguiente, en orden: MQTT (n8n nunca publica directo a la placa), e2e NestJS → placa y endurecimiento. Pendiente de decisión: activar el rollback del bootloader (ver sección OTA; requiere `custom_sdkconfig` y subir la plataforma).
+Hecho: GPIO real de relés, sensor DHT22, watchdog, OTA con auth + versión, y sync saliente (push). Siguiente, en orden: MQTT (n8n nunca publica directo a la placa), e2e NestJS → placa y endurecimiento. Pendiente de decisión: activar el rollback del bootloader (ver sección OTA; requiere `custom_sdkconfig` y subir la plataforma).
