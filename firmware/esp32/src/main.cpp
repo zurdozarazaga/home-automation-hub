@@ -8,7 +8,7 @@
 // Layering (header-only on purpose, kept migration-friendly to ESP-IDF):
 //   hal/ -> physical outputs (safe state first)
 //   sensors/ -> physical inputs (cached reads, never block the server)
-//   net/  -> WiFi + NVS credentials + reconnect
+//   net/  -> WiFi + NVS credentials + reconnect + hub sync client
 //   api/  -> HTTP contract consumed by the NestJS backend
 //   sys/  -> watchdog, reset diagnostics, OTA image confirmation
 
@@ -18,6 +18,7 @@
 
 #include "api/web_routes.h"
 #include "hal/relays.h"
+#include "net/hub_sync.h"
 #include "net/wifi_nvs.h"
 #include "sensors/dht22.h"
 #include "sys/build_info.h"
@@ -53,6 +54,11 @@ void setup() {
   if (!net::wifi::connectFromNvs()) {
     Serial.println("[hub][net] continuing without WiFi, HTTP unreachable until provisioned");
   }
+
+  // Push config comes from NVS (network-independent); it initializes after
+  // WiFi so the boot log reads link first, sync client second. No url
+  // configured -> one log line and the module stays a no-op.
+  net::hub_sync::begin();
 
   api::routes::registerRoutes(server);
 
@@ -90,6 +96,7 @@ void loop() {
   }
   net::wifi::maintain();
   sensors::dht22::update();
+  net::hub_sync::update();       // After WiFi + sensor cache: payload is current.
   sys::ota_confirm::maintain();  // Confirms a fresh OTA image once healthy.
   sys::watchdog::kick();         // All work for this iteration is done: feed.
   delay(100);

@@ -134,3 +134,7 @@ xtensa-esp32s3-elf-addr2line -pfiaC -e firmware/esp32/.pio/build/esp32-s3-devkit
 4. **Slices verificables sin hardware**: la disciplina "compila + respeta el contrato + bien diseñado" permitió llegar al bring-up con el sistema entero funcionando en local.
 5. **Tooling del ecosistema ESP32**: el core 3.x rompe recetas viejas (`digitalWrite`), el USB nativo tiene sus rituales (BOOT+RESET, puerto que cambia de nombre), la toolchain pinneada importa y hasta un SSID con espacios tiene su truco de *escaping* en las build flags.
 6. **El CI como red de seguridad**: cada fix entró con build de firmware + backend + frontend en verde.
+
+---
+
+**Sigue en [`05-el-enlace-push.md`](05-el-enlace-push.md)**: el enlace push de la placa (sync saliente, comandos y acks) y la cacería del crash del driver WiFi.
