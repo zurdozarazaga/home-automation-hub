@@ -21,47 +21,61 @@ editarlos esperando que se reflejen en `n8n.opi.ar`.
 
 ---
 
-## Flujo actual del workflow
+## Flujo actual del workflow (verificado 2026-10-10 vía MCP)
 
 ```
-Schedule 06:00 (Daily Morning Check)
-Webhook manual (path: irrigation-manual)
-Telegram trigger
-  └─→ Merge Triggers
-       └─→ Define Zones (Front Garden, Vegetable Patch, lat/lon)
-            ├─→ OpenWeatherMap (current)
-            └─→ OpenWeatherMap (5-day forecast)
-                 └─→ Merge Weather
-                      └─→ Irrigation Logic (shouldWater / duration / reason)
-                           └─→ Filter: Needs Watering?
-                                ├─→ MQTT publish a "casa/jardin/riego/comandos"  ← REMOVER
-                                └─→ Telegram notification
+Schedule 06:00 (Daily Morning Check) ─┬─→ Merge Triggers ─┬─→ Route Scheduled (sin contenido)
+Webhook POST (Chatwoot/Telegram) ─────┘                   │    └─→ Define Zones (Front Garden, Vegetable Patch)
+                                                          │         ├─→ OpenWeatherMap (current, Río Cuarto)
+                                                          │         └─→ OpenWeatherMap (5-day forecast)
+                                                          │              └─→ Merge Weather
+                                                          │                   └─→ Irrigation Logic (shouldWater / duration / reason)
+                                                          │                        └─→ Needs Watering? (filter shouldWater)
+                                                          │                             └─→ Execute Backend Action ─→ POST backend /devices/:deviceId/actions
+                                                          │                                                           (riego físico, auditado en ActionLog)
+                                                          │
+                                                          └─→ Route Commands (mensajes Chatwoot entrantes)
+                                                               └─→ Command Logic (encender/detener/estado)
+                                                                    └─→ Format Chatwoot Response
+                                                                         └─→ Send to Chatwoot (POST crm.opi.ar, solo chat, sin acción física)
 ```
 
-**Estado objetivo** (lo que la integración debe terminar siendo):
+Notas:
 
-```
-Schedule 06:00
-Webhook manual
-Telegram trigger
-  └─→ Merge Triggers
-       └─→ Irrigation Logic (decide)
-            └─→ HTTP Request → POST http://backend:3001/devices/:deviceId/actions
-                 body: { "action": "turn_on"|"turn_off", "target": "riego"|"luces" }
-                 headers: Authorization: Bearer <JWT service>
-                 └─→ Si 200/201: Telegram notification (éxito)
-                     Si 502:      Telegram notification (ESP32 caído, sin reintento agresivo)
-```
+- **Chatwoot es el puente a Telegram**: no hay trigger de Telegram directo;
+  los mensajes de Telegram llegan como webhook de Chatwoot y se responden
+  por la misma vía. La rama de comandos hoy solo conversa (el "✅ riego
+  ENCENDIDO" es un mensaje de chat, no acciona la placa).
+- **Ya no hay nodo MQTT.** La ejecución física pasa por el nodo
+  `Execute Backend Action` (HTTP Request con credencial Header Auth
+  `HUB Service JWT`, rol `service`).
+- La salida `false` de `Needs Watering?` queda vacía a propósito (sin riego).
 
-El nodo MQTT se reemplaza por un HTTP Request. La decisión (clima, horario,
-trigger manual) sigue siendo de n8n. La ejecución física y la auditoría
-pasan al backend.
+**Wiring de test local (fase actual):**
+
+- Backend público (túnel estable, fase de pruebas):
+  `https://backend.yct4yaoyv6nl.opentunnel.xyz`
+- Device: `riego-patio` (`ad91c47f-70a0-4437-819f-7620f9926451`)
+- Nodo: `POST /devices/:deviceId/actions` con
+  `{ "action": "turn_on", "target": "riego" }`
+- Verificación end-to-end 2026-10-10: ejecución manual con decisión
+  simulada (`shouldWater: true`) → `ActionLog success` + placa en `riego:on`.
+  Al migrar al VPS, actualizar la URL base del nodo (el contrato no cambia).
 
 ---
 
 ## Modificar el workflow (vía MCP)
 
-Nunca editar `n8n.opi.ar` a mano. Usar las tools MCP de n8n:
+El agente (opencode) accede a la instancia con el servidor MCP remoto
+`n8n-mcp` (`https://n8n.opi.ar/mcp-server/http`, API key en
+`~/.config/opencode/opencode.json`, fuera del repo). Nunca commitear ese
+token; rotarlo en n8n al terminar la fase de pruebas.
+
+Nunca editar `n8n.opi.ar` a mano salvo excepción explícita y puntual
+(2026-10-10: el nodo `Execute Backend Action` se creó en la UI porque el
+`update_workflow` del MCP exige reescribir los 14 nodos y no expone los
+nombres de las credenciales existentes de OpenWeatherMap/Chatwoot).
+Usar las tools MCP de n8n:
 
 1. **Listar workflows:** `mcp_n8n-mcp_n8n_list_workflows`
 2. **Obtener workflow completo:** `mcp_n8n-mcp_n8n_get_workflow` con
@@ -74,9 +88,10 @@ Checklist antes de activar un cambio:
 
 - [ ] Conexiones entre nodos completas (sin flechas huérfanas)
 - [ ] Campos requeridos del nodo HTTP Request completos
-- [ ] URL del backend correcta (`http://backend:3001` dentro de la red
-      Docker, `http://localhost:3001` si n8n corre fuera)
-- [ ] Header `Authorization: Bearer <JWT>` presente
+- [ ] URL del backend correcta (túnel de pruebas u hostname del VPS;
+      `http://backend:3001` solo vale dentro de la red Docker local)
+- [ ] Header `Authorization: Bearer <JWT>` presente (vía credencial
+      Header Auth, nunca hardcodeado en el nodo)
 - [ ] Body con `action` y `target` válidos según el DTO del backend
 - [ ] Manejo del 502: no reintentar en loop
 
@@ -101,8 +116,10 @@ exigen en `POST /devices/:deviceId/actions` (`admin`, `service`) y en
 
 - **Issue:** `JWT_SECRET=<secret> npm run auth:issue-service -- <sub>`
   (from `backend/`; `<sub>` defaults to `n8n-sistema-riego`). TTL 24h.
+- **Issue (fase de pruebas):** `npm run auth:issue-token -- --role service --days 30`
+  para no rotar a diario mientras el backend vive en la Mac.
 - **Store:** save the token as the n8n HTTP Header Auth credential
-  (`Authorization: Bearer <JWT>`). Never commit tokens to the repo.
+  (`Authorization: Bearer <JWT`). Never commit tokens to the repo.
 - **Rotate (leak suspected):** re-issue, update the n8n credential, confirm
   a dispatch succeeds. Calls with the old token fail once it expires.
 - **Full invalidation:** rotate `JWT_SECRET` (root `.env`, `backend/.env`,
@@ -157,6 +174,18 @@ Confirmar la URL con quien levantó la instancia.
 - El JWT expiró. Rotar y actualizar la credencial en n8n.
 - El rol no es `admin` ni `service`. Verificar el payload del JWT.
 
+### `GET /devices` con token `service` da 403 (esperado)
+
+Por diseño (`devices.controller.ts`, solo `admin`/`viewer`). El rol
+`service` es solo-acciones: n8n debe usar el `deviceId` conocido, no
+listar dispositivos.
+
+### `test_workflow` reporta timeout pero la ejecución fue success
+
+El MCP puede cortar el llamado a los 300 s aunque el workflow haya
+terminado bien. Verificar siempre con `get_execution` (workflowId +
+executionId) y con el `ActionLog` local antes de declarar un fallo.
+
 ### Backend responde 502
 
 - ESP32 caído. `ActionLog` tiene el detalle. No reintentar agresivamente:
@@ -167,6 +196,13 @@ Confirmar la URL con quien levantó la instancia.
 
 - `deviceId` no existe o el ESP32 detrás de ese ID nunca se registró.
   Verificar `GET /devices` y el log de registro.
+
+### Webhook abierto sin auth (pendiente endurecer)
+
+El trigger Webhook no exige credenciales y un POST con body vacío cae en
+la rama programada (`Route Scheduled`), disparando una evaluación de
+riego. No explotado hasta ahora; antes del VPS, agregar auth al webhook
+o filtrar origen.
 
 ---
 
