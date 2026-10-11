@@ -29,6 +29,7 @@ export interface ActionExecutionResult {
   result: ActionResultStatus;
   httpStatusCode: number;
   executedAt: Date;
+  scheduledOffAt?: Date;
 }
 
 /**
@@ -44,4 +45,5 @@ export interface QueuedActionExecutionResult {
   commandId: string;
   result: 'queued';
   executedAt: Date;
+  scheduledOffAt?: Date;
 }

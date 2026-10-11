@@ -384,4 +384,203 @@ describe('ActionsService', () => {
       expect(commandRepository.create.mock.calls).toHaveLength(0);
     });
   });
+
+  describe('scheduled auto-off', () => {
+    beforeEach(() => {
+      jest.useFakeTimers();
+    });
+
+    afterEach(() => {
+      jest.clearAllTimers();
+      jest.useRealTimers();
+      delete process.env.DEVICE_LINK_MODE;
+    });
+
+    it('pull: turn_on with duration schedules exactly one auto turn_off', async () => {
+      const device = buildDevice();
+      devicesService.findById.mockResolvedValue(device);
+      transport.send.mockResolvedValue({
+        endpoint: '/riego/on',
+        httpStatusCode: 200,
+      });
+
+      const result = await actionsService.execute(device.id, {
+        action: 'turn_on',
+        target: 'riego',
+        durationMinutes: 15,
+      });
+
+      expect(result.result).toBe('success');
+      expect(
+        'scheduledOffAt' in result && result.scheduledOffAt,
+      ).toBeInstanceOf(Date);
+
+      transport.send.mockResolvedValue({
+        endpoint: '/riego/off',
+        httpStatusCode: 200,
+      });
+
+      await jest.advanceTimersByTimeAsync(15 * 60 * 1000);
+
+      expect(transport.send.mock.calls).toHaveLength(2);
+      expect(transport.send.mock.calls[1]?.[1]).toMatchObject({
+        deviceId: device.id,
+        action: 'turn_off',
+        target: 'riego',
+      });
+      expect(actionLogRepository.create.mock.calls).toHaveLength(2);
+      expect(actionLogRepository.create.mock.calls[1]?.[0]).toEqual(
+        expect.objectContaining({
+          deviceId: device.id,
+          action: 'turn_off',
+          target: 'riego',
+          result: 'success',
+        }),
+      );
+    });
+
+    it('pull: explicit turn_off cancels a pending scheduled off', async () => {
+      const device = buildDevice();
+      devicesService.findById.mockResolvedValue(device);
+      transport.send.mockResolvedValue({
+        endpoint: '/riego/on',
+        httpStatusCode: 200,
+      });
+
+      await actionsService.execute(device.id, {
+        action: 'turn_on',
+        target: 'riego',
+        durationMinutes: 15,
+      });
+
+      transport.send.mockResolvedValue({
+        endpoint: '/riego/off',
+        httpStatusCode: 200,
+      });
+
+      await actionsService.execute(device.id, {
+        action: 'turn_off',
+        target: 'riego',
+      });
+
+      await jest.advanceTimersByTimeAsync(15 * 60 * 1000);
+
+      // Only the initial on plus the explicit off; no auto-off fires.
+      expect(transport.send.mock.calls).toHaveLength(2);
+      expect(actionLogRepository.create.mock.calls).toHaveLength(2);
+    });
+
+    it('pull: a second turn_on replaces the pending timer', async () => {
+      const device = buildDevice();
+      devicesService.findById.mockResolvedValue(device);
+      transport.send.mockResolvedValue({
+        endpoint: '/riego/on',
+        httpStatusCode: 200,
+      });
+
+      await actionsService.execute(device.id, {
+        action: 'turn_on',
+        target: 'riego',
+        durationMinutes: 10,
+      });
+
+      await actionsService.execute(device.id, {
+        action: 'turn_on',
+        target: 'riego',
+        durationMinutes: 20,
+      });
+
+      transport.send.mockResolvedValue({
+        endpoint: '/riego/off',
+        httpStatusCode: 200,
+      });
+
+      // The replaced 10-minute timer must not fire.
+      await jest.advanceTimersByTimeAsync(10 * 60 * 1000);
+      expect(transport.send.mock.calls).toHaveLength(2);
+
+      await jest.advanceTimersByTimeAsync(10 * 60 * 1000);
+      expect(transport.send.mock.calls).toHaveLength(3);
+      expect(transport.send.mock.calls[2]?.[1]).toMatchObject({
+        action: 'turn_off',
+        target: 'riego',
+      });
+
+      // No further timers remain.
+      await jest.advanceTimersByTimeAsync(20 * 60 * 1000);
+      expect(transport.send.mock.calls).toHaveLength(3);
+    });
+
+    it('pull: failed turn_on schedules nothing', async () => {
+      const device = buildDevice();
+      devicesService.findById.mockResolvedValue(device);
+      transport.send.mockRejectedValue(
+        new BadGatewayException('Device unreachable'),
+      );
+
+      await expect(
+        actionsService.execute(device.id, {
+          action: 'turn_on',
+          target: 'riego',
+          durationMinutes: 15,
+        }),
+      ).rejects.toBeInstanceOf(BadGatewayException);
+
+      await jest.advanceTimersByTimeAsync(15 * 60 * 1000);
+
+      expect(transport.send.mock.calls).toHaveLength(1);
+      expect(actionLogRepository.create.mock.calls).toHaveLength(1);
+    });
+
+    it('push: turn_on with duration queues the on and enqueues the off after the duration', async () => {
+      process.env.DEVICE_LINK_MODE = 'push';
+      const device = buildDevice({ lastSeenAt: new Date() });
+      devicesService.findById.mockResolvedValue(device);
+      commandRepository.create
+        .mockResolvedValueOnce({
+          id: 'command-1',
+          deviceId: device.id,
+          action: 'turn_on',
+          target: 'riego',
+          endpoint: '/riego/on',
+          status: 'pending',
+          createdAt: new Date(),
+        })
+        .mockResolvedValueOnce({
+          id: 'command-2',
+          deviceId: device.id,
+          action: 'turn_off',
+          target: 'riego',
+          endpoint: '/riego/off',
+          status: 'pending',
+          createdAt: new Date(),
+        });
+
+      const result = await actionsService.execute(device.id, {
+        action: 'turn_on',
+        target: 'riego',
+        durationMinutes: 15,
+      });
+
+      expect(result).toMatchObject({ result: 'queued' });
+      expect(
+        'scheduledOffAt' in result && result.scheduledOffAt,
+      ).toBeInstanceOf(Date);
+      expect(commandRepository.create.mock.calls).toHaveLength(1);
+      // No ActionLog for either command at schedule time.
+      expect(actionLogRepository.create.mock.calls).toHaveLength(0);
+      expect(transport.send.mock.calls).toHaveLength(0);
+
+      await jest.advanceTimersByTimeAsync(15 * 60 * 1000);
+
+      expect(commandRepository.create.mock.calls).toHaveLength(2);
+      expect(commandRepository.create.mock.calls[1]?.[0]).toMatchObject({
+        deviceId: device.id,
+        action: 'turn_off',
+        target: 'riego',
+      });
+      expect(actionLogRepository.create.mock.calls).toHaveLength(0);
+      expect(transport.send.mock.calls).toHaveLength(0);
+    });
+  });
 });

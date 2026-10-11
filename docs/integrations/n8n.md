@@ -58,6 +58,14 @@ Notas:
 - Device: `riego-patio` (`ad91c47f-70a0-4437-819f-7620f9926451`)
 - Nodo: `POST /devices/:deviceId/actions` con
   `{ "action": "turn_on", "target": "riego" }`
+- Con duración (cierra el loop del riego): el body acepta
+  `durationMinutes` opcional (int 1..180). El backend apaga solo al
+  vencer (`scheduledOffAt` en la respuesta) y lo audita en `ActionLog`.
+  El nodo n8n manda `{ "action": "turn_on", "target": "riego",
+  "durationMinutes": {{ $json.decision.duration }} }`.
+  Deuda explícita: el timer vive en memoria — si el backend se reinicia
+  a mitad de un ciclo, hay que apagar a mano (ver feature
+  `odd/tasks/irrigation-auto-off.md`).
 - Verificación end-to-end 2026-10-10: ejecución manual con decisión
   simulada (`shouldWater: true`) → `ActionLog success` + placa en `riego:on`.
   Al migrar al VPS, actualizar la URL base del nodo (el contrato no cambia).
