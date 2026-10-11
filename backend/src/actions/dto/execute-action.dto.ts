@@ -1,4 +1,12 @@
-import { IsIn, IsNotEmpty, IsString } from 'class-validator';
+import {
+  IsIn,
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+} from 'class-validator';
 
 export class ExecuteActionDto {
   @IsIn(['turn_on', 'turn_off'])
@@ -7,4 +15,10 @@ export class ExecuteActionDto {
   @IsString()
   @IsNotEmpty()
   target!: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(180)
+  durationMinutes?: number;
 }

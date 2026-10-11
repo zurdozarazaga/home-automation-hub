@@ -34,6 +34,15 @@ import type {
 @Injectable()
 export class ActionsService {
   private readonly logger = new Logger(ActionsService.name);
+  /**
+   * Pending irrigation auto-off timers by device id. A new explicit command
+   * for the device always supersedes the pending timer. In-memory only: a
+   * backend restart loses pending timers (explicit follow-up debt).
+   */
+  private readonly autoOffTimers = new Map<
+    string,
+    ReturnType<typeof setTimeout>
+  >();
 
   constructor(
     private readonly devicesService: DevicesService,
@@ -76,12 +85,35 @@ export class ActionsService {
     }
 
     if (isPushLinkMode()) {
-      return this.queueForBoard(device, command, driver);
+      return this.queueForBoard(
+        device,
+        command,
+        driver,
+        executeActionDto.durationMinutes,
+      );
     }
+
+    // A new explicit command supersedes any pending scheduled auto-off,
+    // including when this attempt fails (a failed turn_on schedules nothing).
+    this.clearAutoOff(deviceId);
 
     try {
       const response = await this.transport.send(device, command);
       await this.recordOutcome(command, response, 'success');
+
+      const autoOffDuration =
+        command.action === 'turn_on'
+          ? this.resolveAutoOffDuration(executeActionDto.durationMinutes)
+          : undefined;
+      const scheduledOffAt =
+        autoOffDuration !== undefined
+          ? this.schedulePullAutoOff(
+              device,
+              driver,
+              command.target,
+              autoOffDuration,
+            )
+          : undefined;
 
       return {
         deviceId,
@@ -91,6 +123,7 @@ export class ActionsService {
         result: 'success',
         httpStatusCode: response.httpStatusCode,
         executedAt: new Date(),
+        ...(scheduledOffAt !== undefined ? { scheduledOffAt } : {}),
       };
     } catch (error) {
       const fallbackResponse: TransportSendResult = {
@@ -133,7 +166,11 @@ export class ActionsService {
     device: Device,
     command: ActionCommand,
     driver: DeviceDriver,
+    durationMinutes?: number,
   ): Promise<QueuedActionExecutionResult> {
+    // A new explicit command supersedes any pending scheduled auto-off.
+    this.clearAutoOff(device.id);
+
     const endpoint = driver.resolveEndpoint(command.action, command.target);
     const now = Date.now();
     const lastSeenAt = device.lastSeenAt;
@@ -164,6 +201,23 @@ export class ActionsService {
       endpoint,
     });
 
+    // Symmetric to the pull path: a turn_on with duration enqueues the off
+    // once the duration elapses. No ActionLog is written here or at fire
+    // time; the log arrives with the board ack, as for any queued command.
+    const autoOffDuration =
+      command.action === 'turn_on'
+        ? this.resolveAutoOffDuration(durationMinutes)
+        : undefined;
+    const scheduledOffAt =
+      autoOffDuration !== undefined
+        ? this.schedulePushAutoOff(
+            device.id,
+            command.target,
+            driver.resolveEndpoint('turn_off', command.target),
+            autoOffDuration,
+          )
+        : undefined;
+
     return {
       deviceId: device.id,
       action: command.action,
@@ -172,7 +226,132 @@ export class ActionsService {
       commandId: queuedCommand.id,
       result: 'queued',
       executedAt: new Date(),
+      ...(scheduledOffAt !== undefined ? { scheduledOffAt } : {}),
     };
+  }
+
+  /**
+   * Cancels the pending auto-off timer for the device, if any.
+   */
+  private clearAutoOff(deviceId: string): void {
+    const pending = this.autoOffTimers.get(deviceId);
+    if (pending !== undefined) {
+      clearTimeout(pending);
+      this.autoOffTimers.delete(deviceId);
+    }
+  }
+
+  /**
+   * Returns a usable duration or undefined when auto-off does not apply.
+   * The HTTP boundary already rejects out-of-range values via the DTO; this
+   * guard keeps direct service callers from scheduling surprising timers.
+   */
+  private resolveAutoOffDuration(
+    durationMinutes: number | undefined,
+  ): number | undefined {
+    if (
+      durationMinutes === undefined ||
+      !Number.isInteger(durationMinutes) ||
+      durationMinutes < 1 ||
+      durationMinutes > 180
+    ) {
+      return undefined;
+    }
+    return durationMinutes;
+  }
+
+  /**
+   * Pull link: sends turn_off through the same transport once the duration
+   * elapses and audits it like any other action.
+   */
+  private schedulePullAutoOff(
+    device: Device,
+    driver: DeviceDriver,
+    target: string,
+    durationMinutes: number,
+  ): Date {
+    const scheduledOffAt = new Date(Date.now() + durationMinutes * 60_000);
+    const timer = setTimeout(() => {
+      this.autoOffTimers.delete(device.id);
+      void this.runScheduledAutoOff(device, driver, target).catch(
+        () => undefined,
+      );
+    }, durationMinutes * 60_000);
+    this.autoOffTimers.set(device.id, timer);
+    return scheduledOffAt;
+  }
+
+  /**
+   * Push link: enqueues the turn_off command once the duration elapses, so
+   * the board picks it up on a later sync. Never writes an ActionLog.
+   */
+  private schedulePushAutoOff(
+    deviceId: string,
+    target: string,
+    offEndpoint: string,
+    durationMinutes: number,
+  ): Date {
+    const scheduledOffAt = new Date(Date.now() + durationMinutes * 60_000);
+    const timer = setTimeout(() => {
+      this.autoOffTimers.delete(deviceId);
+      void this.commandRepository
+        .create({
+          deviceId,
+          action: 'turn_off',
+          target,
+          endpoint: offEndpoint,
+        })
+        .catch((error: unknown) => {
+          this.logger.error(
+            `Scheduled auto-off enqueue for target '${target}' failed for device ${deviceId} at ${new Date().toISOString()}`,
+            error instanceof Error ? error.stack : error,
+          );
+        });
+    }, durationMinutes * 60_000);
+    this.autoOffTimers.set(deviceId, timer);
+    return scheduledOffAt;
+  }
+
+  /**
+   * Runs the scheduled pull auto-off. Never throws: an unhandled rejection
+   * out of a timer would crash the process, so every failure is logged and
+   * audited as failed (502 contract, same as an explicit action).
+   */
+  private async runScheduledAutoOff(
+    device: Device,
+    driver: DeviceDriver,
+    target: string,
+  ): Promise<void> {
+    const command: ActionCommand = {
+      deviceId: device.id,
+      action: 'turn_off',
+      target,
+    };
+    try {
+      const response = await this.transport.send(device, command);
+      await this.recordOutcome(command, response, 'success');
+    } catch (error) {
+      this.logger.error(
+        `Action 'turn_off' on target '${target}' failed for device ${device.id} at ${new Date().toISOString()}`,
+        error instanceof Error ? error.stack : error,
+      );
+      try {
+        await this.recordOutcome(
+          command,
+          {
+            endpoint: driver.resolveEndpoint(command.action, command.target),
+            httpStatusCode: 502,
+          },
+          'failed',
+          error instanceof Error ? error.message : 'Unknown error',
+        );
+      } catch (logError) {
+        this.logger.error(
+          `Failed to record scheduled auto-off outcome for device ${device.id} at ${new Date().toISOString()}`,
+          logError instanceof Error ? logError.stack : logError,
+        );
+      }
+    }
   }
 
   /**
