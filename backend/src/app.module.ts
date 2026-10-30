@@ -1,9 +1,28 @@
 import { Module } from '@nestjs/common';
+import { ActionsModule } from './actions/actions.module';
+import { AuthModule } from './auth/auth.module';
+import { BoardModule } from './board/board.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { DatabaseModule } from './database/database.module';
+import { DevicesModule } from './devices/devices.module';
+import { HealthModule } from './health/health.module';
+import { N8nModule } from './integrations/n8n/n8n.module';
+import { MonitoringModule } from './monitoring/monitoring.module';
+import { TelemetryModule } from './telemetry/telemetry.module';
 
 @Module({
-  imports: [],
+  imports: [
+    DatabaseModule,
+    DevicesModule,
+    ActionsModule,
+    HealthModule,
+    AuthModule,
+    N8nModule,
+    TelemetryModule,
+    MonitoringModule,
+    BoardModule,
+  ],
   controllers: [AppController],
   providers: [AppService],
 })

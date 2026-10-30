@@ -14,6 +14,50 @@ The system must support manual control, scheduling, monitoring and future sensor
 
 ---
 
+# Frontend Vision
+
+The frontend should feel like a mobile-first control surface for the house.
+
+## UI direction
+
+- Dark mode only, with a minimal and calm visual language.
+- Large cards, generous spacing and very clear hierarchy.
+- Few colors, inspired by Linear, Vercel, Stripe and Apple Home.
+- Primary interaction pattern: quick zone control from the home dashboard.
+
+## Information architecture
+
+Design the UI around these concepts:
+
+- Zones
+- Devices
+- Scenes
+- Activity
+
+## Initial dashboard content
+
+- Weather summary for the current city.
+- Zone cards for areas like Riego and Luces Patio.
+- Device list with online/offline status.
+- Sensor cards for future readings.
+- Automation cards for scheduled flows.
+- Recent activity feed.
+
+## Future structure
+
+The UI should scale to a home model such as:
+
+Casa
+├── Jardín
+├── Patio
+├── Cocina
+├── Living
+└── Garage
+
+Keep the implementation ready for multiple rooms, devices and scenes without changing the base layout.
+
+---
+
 # Architecture
 
 ```text

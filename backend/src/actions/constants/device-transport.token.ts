@@ -1,0 +1,1 @@
+export const DEVICE_TRANSPORT = Symbol('DEVICE_TRANSPORT');

@@ -38,5 +38,21 @@ frontend/.vercel/
 .DS_Store
 Thumbs.db
 
+# Agent-local tooling (machine-specific absolute paths, auto-generated)
+.atl/
+
 # Certificates and keys
 *.pem
+
+# Firmware: local overrides and generated sdkconfig (OTA credentials — never commit)
+firmware/esp32/platformio_override.ini
+firmware/esp32/sdkconfig
+firmware/esp32/sdkconfig.*
+
+# PlatformIO (firmware/esp32)
+.pio/
+.piolibdeps/
+.pioenvs/
+**/*.elf
+**/*.hex
+compile_commands.json
