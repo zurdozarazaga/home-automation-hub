@@ -1,0 +1,117 @@
+# Portainer stack for the borrowed VPS (single-node swarm).
+#
+# Deployed as a NEW stack (name it e.g. "hah") from this file.
+# All secrets come from the stack's environment variables in Portainer —
+# never commit them. Image tags are immutable GHCR refs; to release a new
+# version, push new tags and update the two `image:` lines.
+#
+# Deliberate differences with docker-compose.prod.yml:
+# - No `build:` (docker stack deploy cannot build; images come from GHCR).
+# - No `container_name` (not supported in swarm mode).
+# - `deploy:` with manager placement (volumes are node-local) and memory
+#   limits (borrowed box: stay small).
+# - Backend NOT on traefik_public and with NO Traefik labels: the ESP32
+#   board only speaks plain HTTP and Traefik redirects everything to
+#   HTTPS. The board and n8n reach the backend at http://<vps-ip>:3101.
+# - Frontend uses runtime API_BASE_URL (no NEXT_PUBLIC_* bake needed).
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-home_automation_hub}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in the Portainer stack env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-home_automation_hub}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - hah-network
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+      restart_policy:
+        condition: on-failure
+
+  backend:
+    image: ghcr.io/zurdozarazaga/home-automation-hub-backend:latest
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATA_SOURCE: prisma
+      # Push mode is mandatory here: the hub lives outside the board LAN,
+      # so the board POSTs /board/sync instead of receiving HTTP calls.
+      DEVICE_LINK_MODE: push
+      DEVICE_POLL_INTERVAL_MS: ${DEVICE_POLL_INTERVAL_MS:-30000}
+      BOARD_SWEEP_INTERVAL_MS: ${BOARD_SWEEP_INTERVAL_MS:-30000}
+      ESP32_HTTP_TIMEOUT_MS: ${ESP32_HTTP_TIMEOUT_MS:-5000}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/home_automation_hub}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in the Portainer stack env}
+      AUTH_USERNAME: ${AUTH_USERNAME:-admin}
+      AUTH_PASSWORD: ${AUTH_PASSWORD:?set AUTH_PASSWORD in the Portainer stack env}
+    ports:
+      # Plain HTTP for the ESP32 board + n8n (both speak plain HTTP here;
+      # the service JWT still authenticates every call).
+      - "3101:3001"
+    volumes: []
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - hah-network
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+      restart_policy:
+        condition: on-failure
+
+  frontend:
+    image: ghcr.io/zurdozarazaga/home-automation-hub-frontend:latest
+    environment:
+      PORT: 3000
+      # Server-side only: the browser calls same-origin /api/* handlers,
+      # which proxy to the backend inside this network.
+      API_BASE_URL: http://backend:3001
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - hah-network
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+      restart_policy:
+        condition: on-failure
+
+volumes:
+  postgres_data:
+
+networks:
+  hah-network:
+    driver: overlay
