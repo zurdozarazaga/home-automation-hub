@@ -51,13 +51,28 @@ Notas:
   `HUB Service JWT`, rol `service`).
 - La salida `false` de `Needs Watering?` queda vacía a propósito (sin riego).
 
-**Wiring de test local (fase actual):**
+**Wiring en el VPS (activo desde 2026-10-30):**
 
-- Backend público (túnel estable, fase de pruebas):
-  `https://backend.yct4yaoyv6nl.opentunnel.xyz`
-- Device: `riego-patio` (`ad91c47f-70a0-4437-819f-7620f9926451`)
-- Nodo: `POST /devices/:deviceId/actions` con
-  `{ "action": "turn_on", "target": "riego" }`
+- Backend público (HTTP plano, puerto host directo — la placa no habla
+  TLS y Traefik redirige todo a HTTPS): `http://69.62.93.9:3101`
+- Stack Portainer `hah` (swarm, red y volumen propios): backend,
+  frontend (`:3000`) y postgres propio. Ver
+  `docker-compose.portainer.yml` e imágenes en GHCR.
+- Device: `riego-patio` (`923979b9-a807-4692-8570-0eda5f69622f`),
+  registrado por MAC, enlace en modo `push`.
+- Nodo n8n: `POST /devices/:deviceId/actions` con credencial Header
+  Auth (`HUB Service JWT (VPS)`, JWT service del VPS).
+- Rama programada: body con `durationMinutes` desde `decision.duration`
+  (auto-apagado auditado). Rama de chat (`Execute Backend Action
+  (Commands)`): on/off manual sin duración.
+- Corte verificado 2026-10-30: Telegram `encender` → placa en `on` +
+  `ActionLog success`; `turn_off` idem.
+
+**Wiring de test local anterior (retirado, solo referencia):**
+
+- Túnel `backend.yct4yaoyv6nl.opentunnel.xyz` → dado de baja
+  (`opentunnel down`, hostname reservado por si hace falta).
+- Device viejo `ad91c47f-...` en la DB de la Mac, modo `pull`.
 - Con duración (cierra el loop del riego): el body acepta
   `durationMinutes` opcional (int 1..180). El backend apaga solo al
   vencer (`scheduledOffAt` en la respuesta) y lo audita en `ActionLog`.
