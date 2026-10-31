@@ -65,9 +65,12 @@ services:
       # the service JWT still authenticates every call).
       - "3101:3001"
     volumes: []
+    # NOTE: swarm ignores depends_on entirely (no startup ordering); the
+    # long syntax with `condition` is rejected by the Portainer parser,
+    # so the short list form is used. Postgres readiness is covered by
+    # the backend's own connection retry at boot.
     depends_on:
-      postgres:
-        condition: service_healthy
+      - postgres
     networks:
       - hah-network
     deploy:
