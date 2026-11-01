@@ -55,7 +55,9 @@ export class WeatherService {
 
     this.cached = {
       snapshot,
-      expiresAt: now + this.resolvePositive('WEATHER_CACHE_TTL_MS', DEFAULT_CACHE_TTL_MS),
+      expiresAt:
+        now +
+        this.resolvePositive('WEATHER_CACHE_TTL_MS', DEFAULT_CACHE_TTL_MS),
     };
 
     return snapshot;
@@ -106,9 +108,9 @@ export class WeatherService {
       return this.staleOrThrow();
     }
 
-    const body = (await response.json().catch(() => null)) as
-      | OpenWeatherResponse
-      | null;
+    const body = (await response
+      .json()
+      .catch(() => null)) as OpenWeatherResponse | null;
     const snapshot = this.mapResponse(body, now);
 
     if (!snapshot) {

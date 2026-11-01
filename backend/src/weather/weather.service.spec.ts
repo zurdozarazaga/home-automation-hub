@@ -12,8 +12,14 @@ function providerResponse(body: unknown, status = 200): Response {
   return {
     ok: status >= 200 && status < 300,
     status,
-    json: async () => body,
+    json: () => Promise.resolve(body),
   } as unknown as Response;
+}
+
+function firstRequestUrl(fetchMock: jest.SpyInstance): string {
+  const [url] = fetchMock.mock.calls[0] as [URL | string];
+
+  return String(url);
 }
 
 describe('WeatherService', () => {
@@ -56,7 +62,7 @@ describe('WeatherService', () => {
       fetchedAt: NOW.toISOString(),
     });
 
-    const requestedUrl = String(fetchMock.mock.calls[0][0]);
+    const requestedUrl = firstRequestUrl(fetchMock);
     expect(requestedUrl).toContain('lat=-33.1304');
     expect(requestedUrl).toContain('lon=-64.3499');
     expect(requestedUrl).toContain('units=metric');
@@ -138,7 +144,7 @@ describe('WeatherService', () => {
     const snapshot = await new WeatherService().getCurrent();
 
     expect(snapshot.location).toBe('Test City');
-    const requestedUrl = String(fetchMock.mock.calls[0][0]);
+    const requestedUrl = firstRequestUrl(fetchMock);
     expect(requestedUrl).toContain('lat=-1.5');
     expect(requestedUrl).toContain('lon=2.5');
   });
