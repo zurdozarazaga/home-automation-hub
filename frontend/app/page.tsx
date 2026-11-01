@@ -1,19 +1,17 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { ActivityFeed } from "@/components/dashboard/activity-feed";
-import { AutomationCard } from "@/components/dashboard/automation-card";
+import { AutoRefresh } from "@/components/dashboard/auto-refresh";
 import { BackendOfflineCard } from "@/components/dashboard/backend-offline-card";
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { DashboardSection } from "@/components/dashboard/dashboard-section";
 import { DeviceList } from "@/components/dashboard/device-list";
-import { FutureReadyPanel } from "@/components/dashboard/future-ready-panel";
 import { SensorCard } from "@/components/dashboard/sensor-card";
 import { ZoneControlCard } from "@/components/dashboard/zone-control-card";
 import { getDashboardData } from "@/lib/dashboard-api";
-import { SESSION_COOKIE } from "@/lib/session";
+import { readSessionToken } from "@/lib/session";
 
 export default async function Home() {
-  const token = (await cookies()).get(SESSION_COOKIE)?.value;
+  const token = readSessionToken(await cookies());
 
   if (!token) {
     redirect("/login");
@@ -33,11 +31,13 @@ export default async function Home() {
 
   return (
     <main className="min-h-screen px-4 py-4 text-white sm:px-6 sm:py-6 lg:px-8">
+      <AutoRefresh />
       <div className="mx-auto flex min-h-[calc(100vh-2rem)] w-full max-w-6xl flex-col gap-4 sm:gap-5">
         <DashboardHeader
           location={dashboardData.location}
-          temperature={dashboardData.temperature}
-          forecast={dashboardData.forecast}
+          temperature={dashboardData.weather?.temperature ?? "—"}
+          description={dashboardData.weather?.description ?? "Clima no disponible"}
+          statusLine={dashboardData.statusLine}
         />
 
         <section className="grid gap-4 sm:gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
@@ -59,25 +59,8 @@ export default async function Home() {
             <DashboardSection eyebrow="Sensores" title="Clima y lectura">
               <SensorCard sensors={dashboardData.sensors} />
             </DashboardSection>
-
-            <DashboardSection eyebrow="Automatizaciones" title="Riego Automático">
-              <AutomationCard
-                title="Riego Automático"
-                schedule={dashboardData.irrigationSchedule}
-                status={dashboardData.irrigationStatus}
-              />
-            </DashboardSection>
-
-            <DashboardSection eyebrow="Actividad reciente" title="Últimos eventos">
-              <ActivityFeed items={dashboardData.activity} />
-            </DashboardSection>
           </div>
         </section>
-
-        <FutureReadyPanel
-          title="Zonas, dispositivos y escenas"
-          places={dashboardData.places}
-        />
       </div>
     </main>
   );

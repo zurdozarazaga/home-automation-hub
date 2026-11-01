@@ -10,6 +10,7 @@ import { HealthModule } from './health/health.module';
 import { N8nModule } from './integrations/n8n/n8n.module';
 import { MonitoringModule } from './monitoring/monitoring.module';
 import { TelemetryModule } from './telemetry/telemetry.module';
+import { WeatherModule } from './weather/weather.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { TelemetryModule } from './telemetry/telemetry.module';
     TelemetryModule,
     MonitoringModule,
     BoardModule,
+    WeatherModule,
   ],
   controllers: [AppController],
   providers: [AppService],

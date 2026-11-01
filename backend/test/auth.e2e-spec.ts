@@ -147,6 +147,16 @@ describe('Auth RBAC (e2e)', () => {
   it('keeps health checks public', () =>
     request(app.getHttpServer()).get('/health').expect(200));
 
+  it('sets the baseline security headers on every response', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/health')
+      .expect(200);
+
+    expect(response.headers['x-content-type-options']).toBe('nosniff');
+    expect(response.headers['x-frame-options']).toBe('DENY');
+    expect(response.headers['referrer-policy']).toBe('no-referrer');
+  });
+
   afterEach(async () => {
     fetchSpy.mockRestore();
     await app.close();

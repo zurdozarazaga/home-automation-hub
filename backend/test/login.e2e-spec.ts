@@ -42,7 +42,7 @@ describe('Auth login (e2e)', () => {
     await app.close();
   });
 
-  it('returns a 24h admin token for valid credentials (200)', async () => {
+  it('returns a 12h admin token for valid credentials (200)', async () => {
     const response = await request(app.getHttpServer())
       .post('/auth/login')
       .send({ username: 'e2e-admin', password: 'e2e-password' })
@@ -50,7 +50,7 @@ describe('Auth login (e2e)', () => {
 
     const body = response.body as { accessToken: string; expiresIn: number };
     expect(typeof body.accessToken).toBe('string');
-    expect(body.expiresIn).toBe(86400);
+    expect(body.expiresIn).toBe(43200);
 
     // The issued token must open an admin-guarded route.
     await request(app.getHttpServer())
@@ -93,4 +93,22 @@ describe('Auth login (e2e)', () => {
       .post('/auth/login')
       .send({ username: '', password: '' })
       .expect(400));
+
+  it('answers repeated failures with a generic 429 (never 401 detail)', async () => {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      await request(app.getHttpServer())
+        .post('/auth/login')
+        .send({ username: 'e2e-throttled', password: 'wrong-password' })
+        .expect(401);
+    }
+
+    // Even the right password is refused while the username is throttled.
+    const response = await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({ username: 'e2e-throttled', password: 'e2e-password' })
+      .expect(429);
+
+    const body = response.body as { message: string };
+    expect(body.message).toBe('Too many login attempts. Try again later.');
+  });
 });

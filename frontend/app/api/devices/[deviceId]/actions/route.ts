@@ -1,21 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiBaseUrl } from "@/lib/api-base-url";
-import { SESSION_COOKIE } from "@/lib/session";
+import { isSameOrigin } from "@/lib/origin";
+import { readSessionToken } from "@/lib/session";
 
 type ActionRequestBody = Readonly<{
   action: "turn_on" | "turn_off";
   // Widened: the backend capability-checks driver-declared targets at runtime.
   target: string;
+  /** Irrigation auto-off window, in minutes. */
+  durationMinutes?: number;
 }>;
 
 export async function POST(
   request: NextRequest,
   context: { params: Promise<{ deviceId: string }> },
 ) {
+  if (!isSameOrigin(request)) {
+    return NextResponse.json(
+      { statusCode: 403, message: "Cross-origin request rejected" },
+      { status: 403 },
+    );
+  }
+
   try {
     const { deviceId } = await context.params;
     const body = (await request.json()) as ActionRequestBody;
-    const cookieToken = request.cookies.get(SESSION_COOKIE)?.value;
+    const cookieToken = readSessionToken(request.cookies);
     // Cookie session first; keep forwarding an explicit incoming header.
     const authorization = cookieToken
       ? `Bearer ${cookieToken}`
