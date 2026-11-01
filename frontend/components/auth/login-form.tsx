@@ -25,6 +25,11 @@ export function LoginForm() {
         return;
       }
 
+      if (response.status === 429) {
+        setError("Demasiados intentos. Esperá unos minutos.");
+        return;
+      }
+
       if (response.status === 503) {
         setError("Login deshabilitado: falta AUTH_PASSWORD en el backend");
         return;

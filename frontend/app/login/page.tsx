@@ -1,10 +1,10 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { LoginForm } from "@/components/auth/login-form";
-import { SESSION_COOKIE, isSessionRejected } from "@/lib/session";
+import { isSessionRejected, readSessionToken } from "@/lib/session";
 
 export default async function LoginPage() {
-  const token = (await cookies()).get(SESSION_COOKIE)?.value;
+  const token = readSessionToken(await cookies());
 
   // Cheap path for a valid session: skip the form. An expired token falls
   // through (401) so the form renders without a redirect loop.

@@ -13,23 +13,27 @@ import {
 import { LoginDto } from './dto/login.dto';
 import type { JwtPayload } from './interfaces/jwt-payload.interface';
 import type { LoginResponse } from './interfaces/login.interface';
+import { LoginThrottleService } from './login-throttle.service';
 
 /**
  * Credential login for the single frontend/admin account.
  *
  * Credentials come from the environment (AUTH_USERNAME / AUTH_PASSWORD):
  * there is intentionally no user store. With one account there is nothing
- * to enumerate, and the endpoint is expected to sit on a trusted network /
- * behind a reverse proxy.
+ * to enumerate.
  *
- * TODO(auth): add rate limiting (per-IP lockout is the minimum) and a real
- * user store before exposing login to untrusted networks.
+ * Failed attempts are throttled by LoginThrottleService (5 per username,
+ * 20 globally, per 15 minutes) and checked before any credential
+ * comparison, so a throttled caller learns nothing about the account.
  */
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
 
-  constructor(private readonly jwtService: JwtService) {}
+  constructor(
+    private readonly jwtService: JwtService,
+    private readonly loginThrottle: LoginThrottleService,
+  ) {}
 
   async login(loginDto: LoginDto): Promise<LoginResponse> {
     const expectedPassword = process.env.AUTH_PASSWORD;
@@ -40,6 +44,10 @@ export class AuthService {
       );
       throw new ServiceUnavailableException('Login is disabled');
     }
+
+    // Throttle first: a locked-out caller must not learn whether the
+    // credentials would have been accepted.
+    this.loginThrottle.assertAllowed(loginDto.username);
 
     const expectedUsername = process.env.AUTH_USERNAME ?? DEFAULT_AUTH_USERNAME;
 
@@ -55,10 +63,14 @@ export class AuthService {
     );
 
     if (!usernameMatches || !passwordMatches) {
+      this.loginThrottle.recordFailure(loginDto.username);
+
       // Generic response and no logging: never reveal which part failed and
       // never write credentials to logs.
       throw new UnauthorizedException('Invalid credentials');
     }
+
+    this.loginThrottle.reset(loginDto.username);
 
     const payload: JwtPayload = { sub: expectedUsername, role: 'admin' };
     const accessToken = await this.jwtService.signAsync(payload);

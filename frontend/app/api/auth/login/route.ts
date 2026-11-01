@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiBaseUrl } from "@/lib/api-base-url";
-import { SESSION_COOKIE, SESSION_MAX_AGE_SECONDS } from "@/lib/session";
+import { isSameOrigin } from "@/lib/origin";
+import {
+  SESSION_MAX_AGE_SECONDS,
+  sessionCookieName,
+} from "@/lib/session";
 
 type LoginPayload = Readonly<{
   accessToken: string;
@@ -8,10 +12,36 @@ type LoginPayload = Readonly<{
 }>;
 
 /**
+ * True when the browser reached us over HTTPS.
+ *
+ * Traefik terminates TLS and forwards plain HTTP, so the forwarded protocol is
+ * the authoritative signal; the request protocol is the local-dev fallback.
+ */
+function isSecureRequest(request: NextRequest): boolean {
+  const forwardedProto = request.headers
+    .get("x-forwarded-proto")
+    ?.split(",")[0]
+    ?.trim();
+
+  if (forwardedProto) {
+    return forwardedProto.toLowerCase() === "https";
+  }
+
+  return request.nextUrl.protocol === "https:";
+}
+
+/**
  * Forwards credentials to the backend and, on success, stores the access
  * token in an httpOnly cookie so client JavaScript can never read it.
  */
 export async function POST(request: NextRequest) {
+  if (!isSameOrigin(request)) {
+    return NextResponse.json(
+      { statusCode: 403, message: "Cross-origin request rejected" },
+      { status: 403 },
+    );
+  }
+
   let credentials: unknown;
 
   try {
@@ -43,14 +73,15 @@ export async function POST(request: NextRequest) {
       typeof payload.expiresIn === "number" && payload.expiresIn > 0
         ? payload.expiresIn
         : SESSION_MAX_AGE_SECONDS;
+    const isSecure = isSecureRequest(request);
 
     const response = NextResponse.json({ ok: true }, { status: 200 });
     response.cookies.set({
-      name: SESSION_COOKIE,
+      name: sessionCookieName(isSecure),
       value: payload.accessToken,
       httpOnly: true,
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      secure: isSecure,
       path: "/",
       maxAge,
     });

@@ -1,21 +1,22 @@
 export type DashboardZone = Readonly<{
   icon: string;
   name: string;
-  status: string;
-  statusTone: string;
   accent: string;
   // Widened: the backend capability-checks driver-declared targets at runtime.
   actionTarget: string;
+  /** First device whose capabilities include `actionTarget`; absent when none. */
   deviceId?: string;
 }>;
 
 export type DashboardDevice = Readonly<{
   id: string;
   name: string;
-  state: string;
   tone: string;
   statusLabel: string;
   ipAddress: string;
+  /** Relative Spanish sync age, e.g. "visto hace 12 s" / "sin sincronizar". */
+  lastSeenLabel: string;
+  capabilities: readonly string[];
 }>;
 
 export type DashboardSensors = Readonly<{
@@ -26,57 +27,43 @@ export type DashboardSensors = Readonly<{
   humidity: string | null;
 }>;
 
+export type DashboardWeather = Readonly<{
+  /** Deployment label, e.g. "Río Cuarto". */
+  location: string;
+  /** Formatted provider temperature, e.g. "22.4 °C". */
+  temperature: string;
+  /** Provider description in Spanish, e.g. "cielo claro". */
+  description: string;
+}>;
+
 export type DashboardData = Readonly<{
   location: string;
-  temperature: string;
-  forecast: string;
-  irrigationSchedule: string;
-  irrigationStatus: string;
+  /** Real liveness summary, e.g. "1/1 dispositivos online". */
+  statusLine: string;
+  /** Outdoor weather from the backend; null when the provider is unavailable. */
+  weather: DashboardWeather | null;
   sensors: DashboardSensors;
   zones: readonly DashboardZone[];
   devices: readonly DashboardDevice[];
-  activity: readonly Readonly<{ time: string; label: string }>[];
-  places: readonly string[];
 }>;
 
 /**
- * Static copy for data the backend does not expose yet: weather placeholders
- * (header), irrigation automation, activity feed and places. Devices, zones
- * and sensors always come from the API.
+ * Display config for the zones the dashboard can drive.
+ *
+ * Only presentation lives here: whether a zone is usable is decided by the
+ * device capabilities returned by the backend, never by a name guess.
  */
-export const dashboardDataMock: DashboardData = {
-  location: "Buenos Aires",
-  temperature: "26°C",
-  forecast: "No rain expected",
-  irrigationSchedule: "07:00",
-  irrigationStatus: "Activo",
-  sensors: {
-    temperature: null,
-    humidity: null,
+export const zoneDefinitions: readonly DashboardZone[] = [
+  {
+    icon: "🌱",
+    name: "Riego",
+    accent: "from-emerald-400/35 via-cyan-400/10 to-transparent",
+    actionTarget: "riego",
   },
-  zones: [
-    {
-      icon: "🌱",
-      name: "Riego",
-      status: "OFF",
-      statusTone: "text-rose-200 bg-rose-500/15 border-rose-500/20",
-      accent: "from-emerald-400/35 via-cyan-400/10 to-transparent",
-      actionTarget: "riego",
-    },
-    {
-      icon: "💡",
-      name: "Luces Patio",
-      status: "ON",
-      statusTone: "text-emerald-200 bg-emerald-500/15 border-emerald-500/20",
-      accent: "from-amber-300/35 via-orange-300/10 to-transparent",
-      actionTarget: "luces",
-    },
-  ],
-  devices: [],
-  activity: [
-    { time: "19:00", label: "Riego ON" },
-    { time: "19:20", label: "Riego OFF" },
-    { time: "20:10", label: "Luces Patio ON" },
-  ],
-  places: ["Casa", "Jardín", "Patio"],
-};
+  {
+    icon: "💡",
+    name: "Luces Patio",
+    accent: "from-amber-300/35 via-orange-300/10 to-transparent",
+    actionTarget: "luces",
+  },
+];
