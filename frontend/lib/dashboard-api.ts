@@ -1,9 +1,10 @@
 import {
-  dashboardDataMock,
   type DashboardData,
   type DashboardDevice,
   type DashboardSensors,
+  type DashboardWeather,
   type DashboardZone,
+  zoneDefinitions,
 } from "@/components/dashboard/dashboard-data";
 import { getApiBaseUrl } from "@/lib/api-base-url";
 
@@ -11,17 +12,12 @@ type ApiDevice = Readonly<{
   id: string;
   name: string;
   description: string;
+  capabilities: string[];
+  /** Last successful board sync (ISO string); null until the board reports. */
+  lastSeenAt: string | null;
   ipAddress: string | null;
   port: number | null;
   status: "online" | "offline";
-}>;
-
-type ApiDevicesHealth = Readonly<{
-  status: "ok";
-  totalDevices: number;
-  onlineDevices: number;
-  offlineDevices: number;
-  checkedAt: string;
 }>;
 
 type ApiTelemetryReading = Readonly<{
@@ -33,15 +29,41 @@ type ApiTelemetryReading = Readonly<{
   source?: string;
 }>;
 
+type TaggedReading = ApiTelemetryReading & Readonly<{ deviceName: string }>;
+
+/** Backend contract for `GET /weather` (normalized OpenWeatherMap snapshot). */
+type ApiWeather = Readonly<{
+  location: string;
+  temperatureC: number;
+  description: string;
+  icon?: string;
+  humidityPct?: number | null;
+  fetchedAt: string;
+}>;
+
 export type DashboardLoadResult =
   | Readonly<{ status: "ok"; data: DashboardData }>
   | Readonly<{ status: "unauthorized" }>
   | Readonly<{ status: "disconnected" }>;
 
-const TELEMETRY_LIMIT = 500;
-const SENSOR_KEYWORDS = ["sensor", "dht", "clima", "ambiente"] as const;
-const RIEGO_KEYWORDS = ["riego"] as const;
-const LUCES_KEYWORDS = ["luces", "luz", "patio"] as const;
+/** Home location. A fact of this deployment, not a placeholder. */
+const LOCATION = "Río Cuarto";
+
+const TELEMETRY_LIMIT = 1000;
+
+/**
+ * The backend orders telemetry `ts asc` and then applies `limit`, so a wide
+ * window with a small limit returns the OLDEST rows. A 10-minute window keeps
+ * the latest readings inside `limit`.
+ */
+const TELEMETRY_WINDOW_MS = 10 * 60 * 1000;
+
+/**
+ * Mirrors the backend liveness threshold (30 s). In push mode every sync
+ * refreshes `lastSeenAt`, so its age is the exact liveness signal; `status`
+ * is only the fallback for links that never report a timestamp (pull mode).
+ */
+const DEVICE_ONLINE_WINDOW_MS = 30 * 1000;
 
 type ApiResult<T> =
   | Readonly<{ ok: true; data: T }>
@@ -76,61 +98,101 @@ function formatAddress(device: ApiDevice): string {
   return `${device.ipAddress}:${device.port ?? "-"}`;
 }
 
-function mapDeviceToCard(device: ApiDevice): DashboardDevice {
-  const isOnline = device.status === "online";
+function formatRelativeSeen(
+  lastSeenAt: string | null,
+  now: number,
+): string {
+  if (!lastSeenAt) {
+    return "sin sincronizar";
+  }
+
+  const lastSeen = Date.parse(lastSeenAt);
+
+  if (!Number.isFinite(lastSeen)) {
+    return "sin sincronizar";
+  }
+
+  const elapsedSeconds = Math.max(0, Math.round((now - lastSeen) / 1000));
+
+  if (elapsedSeconds < 60) {
+    return `visto hace ${elapsedSeconds} s`;
+  }
+
+  const elapsedMinutes = Math.round(elapsedSeconds / 60);
+
+  if (elapsedMinutes < 60) {
+    return `visto hace ${elapsedMinutes} min`;
+  }
+
+  const elapsedHours = Math.round(elapsedMinutes / 60);
+
+  if (elapsedHours < 24) {
+    return `visto hace ${elapsedHours} h`;
+  }
+
+  return `visto hace ${Math.round(elapsedHours / 24)} d`;
+}
+
+function isDeviceOnline(device: ApiDevice, now: number): boolean {
+  // `lastSeenAt` wins when present: a stale `status: "online"` left behind by
+  // a disabled sweep must not keep a dead board green.
+  if (device.lastSeenAt) {
+    const lastSeen = Date.parse(device.lastSeenAt);
+
+    return (
+      Number.isFinite(lastSeen) && now - lastSeen <= DEVICE_ONLINE_WINDOW_MS
+    );
+  }
+
+  return device.status === "online";
+}
+
+function mapDeviceToCard(device: ApiDevice, now: number): DashboardDevice {
+  const isOnline = isDeviceOnline(device, now);
 
   return {
     id: device.id,
     name: device.name,
-    state: isOnline ? "Online" : "Offline",
     tone: isOnline ? "text-emerald-300" : "text-rose-300",
     statusLabel: isOnline ? "Online 🟢" : "Offline 🔴",
     ipAddress: formatAddress(device),
+    lastSeenLabel: formatRelativeSeen(device.lastSeenAt, now),
+    capabilities: device.capabilities ?? [],
   };
 }
 
-function findDeviceByKeywords(
+function findDeviceByCapability(
   devices: readonly ApiDevice[],
-  keywords: readonly string[],
+  capability: string,
 ): ApiDevice | undefined {
-  const normalizedKeywords = keywords.map((keyword) => keyword.toLowerCase());
-
-  return devices.find((device) => {
-    const searchable = `${device.name} ${device.description}`.toLowerCase();
-    return normalizedKeywords.some((keyword) => searchable.includes(keyword));
-  });
-}
-
-function zoneKeywords(actionTarget: string): readonly string[] {
-  return actionTarget === "riego" ? RIEGO_KEYWORDS : LUCES_KEYWORDS;
+  return devices.find((device) =>
+    (device.capabilities ?? []).includes(capability),
+  );
 }
 
 function mapZonesFromDevices(
   devices: readonly ApiDevice[],
 ): readonly DashboardZone[] {
-  return dashboardDataMock.zones.map((zone) => ({
+  return zoneDefinitions.map((zone) => ({
     ...zone,
-    // No mock device ids: an unmatched zone stays unavailable.
-    deviceId: findDeviceByKeywords(devices, zoneKeywords(zone.actionTarget))?.id,
+    deviceId: findDeviceByCapability(devices, zone.actionTarget)?.id,
   }));
 }
 
-function mapForecast(health: ApiDevicesHealth | null): string {
-  if (!health) {
-    return dashboardDataMock.forecast;
+function buildStatusLine(devices: readonly ApiDevice[], now: number): string {
+  if (devices.length === 0) {
+    return "Sin dispositivos registrados";
   }
 
-  if (health.offlineDevices > 0) {
-    return `${health.offlineDevices} dispositivo(s) offline`;
-  }
+  const onlineDevices = devices.filter((device) => isDeviceOnline(device, now));
 
-  return `${health.onlineDevices}/${health.totalDevices} dispositivos online`;
+  return `${onlineDevices.length}/${devices.length} dispositivos online`;
 }
 
-function findLatestReading(
-  readings: readonly ApiTelemetryReading[],
+function findLatestReading<T extends ApiTelemetryReading>(
+  readings: readonly T[],
   metric: string,
-): ApiTelemetryReading | undefined {
+): T | undefined {
   for (let index = readings.length - 1; index >= 0; index -= 1) {
     const reading = readings[index];
     if (reading?.metric === metric) {
@@ -145,25 +207,78 @@ function formatMetricValue(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
-function mapSensors(
-  device: ApiDevice | undefined,
-  readings: readonly ApiTelemetryReading[] | null,
-): DashboardSensors {
-  const latestTemperature = readings
-    ? findLatestReading(readings, "temperature")
-    : undefined;
-  const latestHumidity = readings
-    ? findLatestReading(readings, "humidity")
-    : undefined;
+function buildTelemetryPath(deviceId: string, now: number): string {
+  const from = new Date(now - TELEMETRY_WINDOW_MS).toISOString();
+  const to = new Date(now).toISOString();
+  const query = [
+    `from=${encodeURIComponent(from)}`,
+    `to=${encodeURIComponent(to)}`,
+    `limit=${TELEMETRY_LIMIT}`,
+  ].join("&");
+
+  return `/devices/${deviceId}/telemetry?${query}`;
+}
+
+/**
+ * Reads the window from every device and merges the readings in ascending
+ * `ts` order, so the last matching entry really is the newest one.
+ */
+async function fetchReadings(
+  token: string,
+  devices: readonly ApiDevice[],
+  now: number,
+): Promise<readonly TaggedReading[]> {
+  const perDevice = await Promise.all(
+    devices.map(async (device) => {
+      const result = await fetchApi<ApiTelemetryReading[]>(
+        token,
+        buildTelemetryPath(device.id, now),
+      );
+
+      return result.ok
+        ? result.data.map((reading) => ({
+            ...reading,
+            deviceName: device.name,
+          }))
+        : [];
+    }),
+  );
+
+  return perDevice
+    .flat()
+    .sort((left, right) => Date.parse(left.ts) - Date.parse(right.ts));
+}
+
+/**
+ * Weather is optional: a 503 (provider down or key missing) must degrade to
+ * "no weather" instead of taking the whole dashboard down.
+ */
+function mapWeather(result: ApiResult<ApiWeather>): DashboardWeather | null {
+  if (!result.ok) {
+    return null;
+  }
 
   return {
-    deviceName: device?.name,
-    temperature: latestTemperature
-      ? `${formatMetricValue(latestTemperature.value)} °C`
-      : null,
-    humidity: latestHumidity
-      ? `${formatMetricValue(latestHumidity.value)} %`
-      : null,
+    location: result.data.location,
+    temperature: `${formatMetricValue(result.data.temperatureC)} °C`,
+    description: result.data.description,
+  };
+}
+
+function mapSensors(readings: readonly TaggedReading[]): DashboardSensors {
+  const latestTemperature = findLatestReading(readings, "temperature");
+  const latestHumidity = findLatestReading(readings, "humidity");
+
+  return {
+    deviceName: latestTemperature?.deviceName ?? latestHumidity?.deviceName,
+    temperature:
+      latestTemperature !== undefined
+        ? `${formatMetricValue(latestTemperature.value)} °C`
+        : null,
+    humidity:
+      latestHumidity !== undefined
+        ? `${formatMetricValue(latestHumidity.value)} %`
+        : null,
   };
 }
 
@@ -179,29 +294,21 @@ export async function getDashboardData(
   }
 
   const devices = devicesResult.data;
-  const sensorDevice = findDeviceByKeywords(devices, SENSOR_KEYWORDS) ?? devices[0];
-
-  const [healthResult, telemetryResult] = await Promise.all([
-    fetchApi<ApiDevicesHealth>(token, "/health/devices"),
-    sensorDevice
-      ? fetchApi<ApiTelemetryReading[]>(
-          token,
-          `/devices/${sensorDevice.id}/telemetry?limit=${TELEMETRY_LIMIT}`,
-        )
-      : null,
+  const now = Date.now();
+  const [weatherResult, readings] = await Promise.all([
+    fetchApi<ApiWeather>(token, "/weather"),
+    fetchReadings(token, devices, now),
   ]);
 
   return {
     status: "ok",
     data: {
-      ...dashboardDataMock,
-      forecast: mapForecast(healthResult.ok ? healthResult.data : null),
-      devices: devices.map(mapDeviceToCard),
+      location: LOCATION,
+      statusLine: buildStatusLine(devices, now),
+      weather: mapWeather(weatherResult),
+      sensors: mapSensors(readings),
       zones: mapZonesFromDevices(devices),
-      sensors: mapSensors(
-        sensorDevice,
-        telemetryResult?.ok ? telemetryResult.data : null,
-      ),
+      devices: devices.map((device) => mapDeviceToCard(device, now)),
     },
   };
 }

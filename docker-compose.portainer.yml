@@ -14,6 +14,9 @@
 #   board only speaks plain HTTP and Traefik redirects everything to
 #   HTTPS. The board and n8n reach the backend at http://<vps-ip>:3101.
 # - Frontend uses runtime API_BASE_URL (no NEXT_PUBLIC_* bake needed).
+# - Frontend IS exposed through the host's Traefik on hub.ezarazaga.ar,
+#   using the shared `le` HTTP-01 resolver. The 3000:3000 publish is only
+#   a temporary fallback and must be removed once HTTPS is verified.
 
 services:
   postgres:
@@ -99,7 +102,19 @@ services:
       - backend
     networks:
       - hah-network
+      # Shared network owned by the host's Traefik stack.
+      - traefik_public
     deploy:
+      # In swarm mode Traefik reads SERVICE labels, so they must live under
+      # deploy.labels and not at the service level.
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network=traefik_public
+        - traefik.http.routers.hah-web.rule=Host(`hub.ezarazaga.ar`)
+        - traefik.http.routers.hah-web.entrypoints=websecure
+        - traefik.http.routers.hah-web.tls=true
+        - traefik.http.routers.hah-web.tls.certresolver=le
+        - traefik.http.services.hah-web.loadbalancer.server.port=3000
       mode: replicated
       replicas: 1
       placement:
@@ -118,3 +133,6 @@ volumes:
 networks:
   hah-network:
     driver: overlay
+  # Created by the host's Traefik stack; we only join it.
+  traefik_public:
+    external: true

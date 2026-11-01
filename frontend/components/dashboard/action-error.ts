@@ -12,6 +12,13 @@ export function mapActionError(status: number): ZoneActionError {
     };
   }
 
+  if (status === 429) {
+    return {
+      message: "Demasiados intentos. Esperá unos minutos.",
+      sessionExpired: false,
+    };
+  }
+
   if (status === 502) {
     return {
       message: "No se pudo alcanzar la placa.",

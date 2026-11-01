@@ -30,6 +30,10 @@ services:
       PORT: 3001
       DATA_SOURCE: prisma
       DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/home_automation_hub}
+      # Required since AuthModule refuses to boot in production without them.
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET}
+      AUTH_USERNAME: ${AUTH_USERNAME:-admin}
+      AUTH_PASSWORD: ${AUTH_PASSWORD:?set AUTH_PASSWORD}
     ports:
       - "3001:3001"
     depends_on:
